@@ -10,9 +10,11 @@ import {
 import { useEffect, type ReactNode } from "react";
 
 import appCss from "../styles.css?url";
-import { reportLovableError } from "../lib/lovable-error-reporting";
 import { AppShell } from "@/components/app-shell";
 import { Toaster } from "@/components/ui/sonner";
+import { AuthProvider, useAuth } from "@/contexts/auth-context";
+import { AuthScreen } from "@/components/auth-screen";
+import { Loader2 } from "lucide-react";
 
 function NotFoundComponent() {
   return (
@@ -40,7 +42,7 @@ function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
   console.error(error);
   const router = useRouter();
   useEffect(() => {
-    reportLovableError(error, { boundary: "tanstack_root_error_component" });
+    // Error reporting removed
   }, [error]);
 
   return (
@@ -127,11 +129,32 @@ function RootComponent() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <AppShell>
-        {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
-        <Outlet />
-      </AppShell>
-      <Toaster position="top-center" />
+      <AuthProvider>
+        <AuthWrapper />
+        <Toaster position="top-center" />
+      </AuthProvider>
     </QueryClientProvider>
+  );
+}
+
+function AuthWrapper() {
+  const { session, isLoading } = useAuth();
+
+  if (isLoading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  if (!session) {
+    return <AuthScreen />;
+  }
+
+  return (
+    <AppShell>
+      <Outlet />
+    </AppShell>
   );
 }

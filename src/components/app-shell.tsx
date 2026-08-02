@@ -10,9 +10,12 @@ import {
   Settings,
   Moon,
   Sun,
+  LogOut,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { AskAiIsland } from "@/components/ask-ai";
+import { useAuth } from "@/contexts/auth-context";
+import { supabase } from "@/lib/supabase";
 
 const nav = [
   { to: "/", label: "Dashboard", icon: Home },
@@ -58,6 +61,8 @@ function ThemeToggle({ compact = false }: { compact?: boolean }) {
 
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const { session } = useAuth();
+  const email = session?.user?.email || "User";
 
   return (
     <div className="min-h-screen w-full">
@@ -96,15 +101,18 @@ export function AppShell({ children }: { children: ReactNode }) {
           </nav>
 
           <div className="mt-4 flex items-center justify-between gap-2 px-1">
-            <div className="flex min-w-0 items-center gap-2">
-              <span className="bg-primary-soft text-primary grid h-9 w-9 shrink-0 place-items-center rounded-2xl text-xs font-bold">
-                JD
+            <div className="flex min-w-0 flex-1 items-center gap-2">
+              <span className="bg-primary-soft text-primary grid h-9 w-9 shrink-0 place-items-center rounded-2xl text-xs font-bold uppercase">
+                {email.substring(0, 2)}
               </span>
-              <span className="min-w-0">
-                <span className="block truncate text-xs font-semibold">John Doe</span>
-                <span className="text-muted-foreground block truncate text-[10px]">
-                  Sales Lead
-                </span>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-xs font-semibold">{email}</span>
+                <button
+                  onClick={() => supabase.auth.signOut()}
+                  className="text-muted-foreground hover:text-foreground flex items-center gap-1 text-[10px] font-medium transition"
+                >
+                  <LogOut className="h-3 w-3" /> Sign out
+                </button>
               </span>
             </div>
             <ThemeToggle compact />

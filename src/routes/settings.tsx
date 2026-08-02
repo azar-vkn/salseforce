@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { GlassCard, Island, SectionTitle } from "@/components/glass";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -16,6 +16,30 @@ export const Route = createFileRoute("/settings")({
   component: SettingsPage,
 });
 
+function useLocalStorage<T>(key: string, initialValue: T): [T, (val: T | ((val: T) => T)) => void] {
+  const [storedValue, setStoredValue] = useState<T>(() => {
+    try {
+      const item = window.localStorage.getItem(key);
+      return item ? JSON.parse(item) : initialValue;
+    } catch (error) {
+      console.error(error);
+      return initialValue;
+    }
+  });
+
+  const setValue = (value: T | ((val: T) => T)) => {
+    try {
+      const valueToStore = value instanceof Function ? value(storedValue) : value;
+      setStoredValue(valueToStore);
+      window.localStorage.setItem(key, JSON.stringify(valueToStore));
+    } catch (error) {
+      console.error(error);
+    }
+  };
+
+  return [storedValue, setValue];
+}
+
 function Field({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
   return (
     <label className="block">
@@ -29,8 +53,8 @@ function Field({ label, value, onChange }: { label: string; value: string; onCha
   );
 }
 
-function Toggle({ label, hint }: { label: string; hint: string }) {
-  const [on, setOn] = useState(true);
+function Toggle({ id, label, hint }: { id: string; label: string; hint: string }) {
+  const [on, setOn] = useLocalStorage(`salesmind-settings-${id}`, true);
   return (
     <button
       onClick={() => setOn((v) => !v)}
@@ -58,9 +82,9 @@ function Toggle({ label, hint }: { label: string; hint: string }) {
 }
 
 function SettingsPage() {
-  const [name, setName] = useState("John Doe");
-  const [email, setEmail] = useState("john@salesmind.ai");
-  const [company, setCompany] = useState("SalesMind AI");
+  const [name, setName] = useLocalStorage("salesmind-settings-name", "John Doe");
+  const [email, setEmail] = useLocalStorage("salesmind-settings-email", "john@salesmind.ai");
+  const [company, setCompany] = useLocalStorage("salesmind-settings-company", "SalesMind AI");
 
   return (
     <div className="space-y-5">
@@ -84,17 +108,17 @@ function SettingsPage() {
           <GlassCard delay={80}>
             <SectionTitle title="AI behaviour" />
             <div className="divide-border/60 mt-1 divide-y">
-              <Toggle label="Daily briefing" hint="A morning summary at 8:30 AM" />
-              <Toggle label="Suggested replies" hint="Draft responses inside conversations" />
-              <Toggle label="Auto lead scoring" hint="Re-score leads after every interaction" />
+              <Toggle id="daily-briefing" label="Daily briefing" hint="A morning summary at 8:30 AM" />
+              <Toggle id="suggested-replies" label="Suggested replies" hint="Draft responses inside conversations" />
+              <Toggle id="auto-lead-scoring" label="Auto lead scoring" hint="Re-score leads after every interaction" />
             </div>
           </GlassCard>
 
           <GlassCard delay={140}>
             <SectionTitle title="Notifications" />
             <div className="divide-border/60 mt-1 divide-y">
-              <Toggle label="Hot lead alerts" hint="Ping me when intent crosses 85" />
-              <Toggle label="Task reminders" hint="15 minutes before each task" />
+              <Toggle id="hot-lead-alerts" label="Hot lead alerts" hint="Ping me when intent crosses 85" />
+              <Toggle id="task-reminders" label="Task reminders" hint="15 minutes before each task" />
             </div>
           </GlassCard>
         </div>

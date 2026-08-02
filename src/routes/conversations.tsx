@@ -1,8 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Send, PhoneCall, CalendarPlus, FileText, BookOpen, Forward, ArrowLeft } from "lucide-react";
 import { GlassCard, Island, Ring, SectionTitle } from "@/components/glass";
-import { conversationThreads, leads, type Message } from "@/lib/mock-data";
+import { type Message } from "@/lib/types";
+import { useLeads, useConversations, useUpdateConversation } from "@/hooks/use-supabase";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
@@ -22,23 +23,41 @@ export const Route = createFileRoute("/conversations")({
 });
 
 function Conversations() {
-  const [activeId, setActiveId] = useState(leads[0].id);
-  const [threads, setThreads] = useState(conversationThreads);
+  const { data: serverLeads = [], isLoading: loadingLeads } = useLeads();
+  const { data: serverThreads = [], isLoading: loadingThreads } = useConversations();
+  const updateConversationMutation = useUpdateConversation();
+
+  const [activeId, setActiveId] = useState<string | null>(null);
+  
+  useEffect(() => {
+    if (serverLeads.length > 0 && !activeId) {
+      setActiveId(serverLeads[0].id);
+    }
+  }, [serverLeads, activeId]);
+
   const [draft, setDraft] = useState("");
   const [mobilePane, setMobilePane] = useState<"list" | "chat">("list");
 
-  const lead = leads.find((l) => l.id === activeId)!;
-  const messages: Message[] = threads[activeId] ?? [];
+  if (loadingLeads || loadingThreads) {
+    return <div className="p-8 text-center text-muted-foreground">Loading conversations...</div>;
+  }
+
+  if (!serverLeads.length) {
+    return <div className="p-8 text-center text-muted-foreground">No leads found.</div>;
+  }
+
+  const lead = serverLeads.find((l) => l.id === activeId) || serverLeads[0];
+  const activeThread = serverThreads.find(t => t.id === activeId);
+  const messages: Message[] = activeThread?.messages ?? [];
 
   function send(text: string) {
-    if (!text.trim()) return;
-    setThreads((prev) => ({
-      ...prev,
-      [activeId]: [
-        ...(prev[activeId] ?? []),
-        { id: crypto.randomUUID(), from: "me", text, time: "Now" },
-      ],
-    }));
+    if (!text.trim() || !activeThread) return;
+    const newMessage = { id: crypto.randomUUID(), from: "me", text, time: "Now" } as Message;
+    const updatedMessages = [...messages, newMessage];
+    
+    // Update server
+    updateConversationMutation.mutate({ id: activeId!, data: { messages: updatedMessages } });
+    
     setDraft("");
   }
 
@@ -58,9 +77,11 @@ function Conversations() {
         <GlassCard
           className={cn("p-3", mobilePane === "chat" && "hidden lg:block")}
         >
-          <SectionTitle title="Inbox" hint={`${leads.length}`} />
+          <SectionTitle title="Inbox" hint={`${serverLeads.length}`} />
           <div className="mt-2 space-y-1">
-            {leads.map((l) => (
+            {serverLeads.map((l) => {
+              const latestMsg = serverThreads.find(t => t.id === l.id)?.messages?.at(-1)?.text;
+              return (
               <button
                 key={l.id}
                 onClick={() => {
@@ -78,14 +99,15 @@ function Conversations() {
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-sm font-semibold">{l.name}</span>
                   <span className="text-muted-foreground block truncate text-xs">
-                    {threads[l.id]?.at(-1)?.text ?? "No messages yet"}
+                    {latestMsg ?? "No messages yet"}
                   </span>
                 </span>
                 {l.status === "Unread" ? (
                   <span className="bg-primary h-2 w-2 shrink-0 rounded-full" />
                 ) : null}
               </button>
-            ))}
+            );
+          })}
           </div>
         </GlassCard>
 

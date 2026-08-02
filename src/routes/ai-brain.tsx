@@ -1,8 +1,18 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useRef, useState } from "react";
-import { Bot, Send, Sparkles } from "lucide-react";
+import { useEffect, useRef, useState, useCallback } from "react";
+import { Bot, Send, Sparkles, RotateCcw } from "lucide-react";
 import { GlassCard, Island, SectionTitle } from "@/components/glass";
-import { aiReply, aiSuggestions } from "@/lib/mock-data";
+import { getAiReply } from "@/lib/ai";
+
+const CHAT_STORAGE_KEY = "salesmind-ai-brain-messages";
+
+const aiSuggestions: string[] = [
+  "Summarize my open deals",
+  "Any new leads today?",
+  "Draft a check-in email for Acme Corp",
+  "Write a polite rejection email",
+  "Help me pitch our premium tier",
+];
 
 export const Route = createFileRoute("/ai-brain")({
   head: () => ({
@@ -21,18 +31,44 @@ export const Route = createFileRoute("/ai-brain")({
 
 type Msg = { id: string; role: "user" | "ai"; text: string };
 
+const introMessage: Msg = {
+  id: "intro",
+  role: "ai",
+  text: "Hello! I'm your SalesMind AI assistant. I have access to your CRM data — leads, tasks, and conversations. Ask me anything about your pipeline, or pick a suggestion below.",
+};
+
+function loadMessages(): Msg[] {
+  try {
+    const raw = localStorage.getItem(CHAT_STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+    }
+  } catch {
+    // Ignore parse errors
+  }
+  return [introMessage];
+}
+
+function saveMessages(msgs: Msg[]) {
+  try {
+    localStorage.setItem(CHAT_STORAGE_KEY, JSON.stringify(msgs));
+  } catch {
+    // Ignore storage errors
+  }
+}
+
 function AiBrain() {
-  const [messages, setMessages] = useState<Msg[]>([
-    {
-      id: "intro",
-      role: "ai",
-      text: "Good morning, John. Your pipeline is worth ₹18.2L in active negotiations. Ask me anything — or pick a suggestion below.",
-    },
-  ]);
+  const [messages, setMessages] = useState<Msg[]>(loadMessages);
   const [input, setInput] = useState("");
   const [thinking, setThinking] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const endRef = useRef<HTMLDivElement>(null);
+
+  // Persist messages to localStorage whenever they change
+  useEffect(() => {
+    saveMessages(messages);
+  }, [messages]);
 
   useEffect(() => {
     inputRef.current?.focus();
@@ -42,16 +78,24 @@ function AiBrain() {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, thinking]);
 
-  function ask(text: string) {
+  const startNewChat = useCallback(() => {
+    const freshMessages = [introMessage];
+    setMessages(freshMessages);
+    setInput("");
+    setThinking(false);
+    inputRef.current?.focus();
+  }, []);
+
+  async function ask(text: string) {
     if (!text.trim() || thinking) return;
     setMessages((p) => [...p, { id: crypto.randomUUID(), role: "user", text }]);
     setInput("");
     setThinking(true);
-    setTimeout(() => {
-      setMessages((p) => [...p, { id: crypto.randomUUID(), role: "ai", text: aiReply(text) }]);
-      setThinking(false);
-      inputRef.current?.focus();
-    }, 700);
+
+    const reply = await getAiReply(text);
+    setMessages((p) => [...p, { id: crypto.randomUUID(), role: "ai", text: reply }]);
+    setThinking(false);
+    inputRef.current?.focus();
   }
 
   return (
@@ -60,10 +104,18 @@ function AiBrain() {
         <span className="from-primary to-accent grid h-12 w-12 shrink-0 place-items-center rounded-[20px] bg-gradient-to-br">
           <Bot className="text-primary-foreground h-6 w-6" />
         </span>
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <h1 className="truncate text-2xl font-bold tracking-tight sm:text-3xl">AI Brain</h1>
           <p className="text-muted-foreground text-sm">Always on. Never intrusive.</p>
         </div>
+        <Island
+          variant="glass"
+          className="px-3 py-2 text-xs"
+          icon={<RotateCcw className="h-3.5 w-3.5" />}
+          onClick={startNewChat}
+        >
+          New Chat
+        </Island>
       </header>
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_18rem]">

@@ -1,4 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { useState, useEffect } from "react";
 import {
   Flame,
   IndianRupee,
@@ -11,7 +12,7 @@ import {
   PhoneCall,
 } from "lucide-react";
 import { GlassCard, Island, SectionTitle } from "@/components/glass";
-import { leads, revenueSeries } from "@/lib/mock-data";
+import { useLeads, useTasks } from "@/hooks/use-supabase";
 import { toast } from "sonner";
 import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis } from "recharts";
 
@@ -30,22 +31,67 @@ export const Route = createFileRoute("/")({
   component: Dashboard,
 });
 
-const stats = [
-  { label: "Revenue this month", value: "₹42.0L", delta: "+18%", icon: IndianRupee },
-  { label: "Hot leads", value: "8", delta: "+3 today", icon: Flame },
-  { label: "Pending replies", value: "12", delta: "avg 7 min", icon: MessageSquareDot },
-  { label: "Conversions", value: "24%", delta: "+4.2%", icon: TrendingUp },
-];
-
 function Dashboard() {
-  const hot = leads.filter((l) => l.score > 75).slice(0, 3);
+  const { data: serverLeads = [], isLoading: loadingLeads, error } = useLeads();
+  const { data: serverTasks = [], isLoading: loadingTasks } = useTasks();
+  
+  const hot = serverLeads.filter((l) => l.score > 75).slice(0, 3);
+  const wonLeads = serverLeads.filter(l => l.stage === "Won");
+  
+  // Basic parsing for string values like "₹5L", "₹50k"
+  const parseValue = (valStr: string) => {
+    const num = parseFloat(valStr.replace(/[^0-9.]/g, ''));
+    if (isNaN(num)) return 0;
+    if (valStr.toLowerCase().includes('l')) return num * 100000;
+    if (valStr.toLowerCase().includes('k')) return num * 1000;
+    if (valStr.toLowerCase().includes('cr')) return num * 10000000;
+    return num;
+  };
+
+  const formatLakhs = (val: number) => `₹${(val / 100000).toFixed(1)}L`;
+
+  const totalWon = wonLeads.reduce((sum, l) => sum + parseValue(l.value), 0);
+  const totalExpected = serverLeads.filter(l => l.stage !== "Won").reduce((sum, l) => sum + parseValue(l.value), 0);
+
+  const pendingReplies = serverLeads.filter(l => l.status === "Unread").length;
+  const todayTasks = serverTasks.filter(t => t.column === "today");
+  const followUps = serverTasks.filter(t => t.tag.toLowerCase().includes("follow")).length;
+
+  const stats = [
+    { label: "Revenue this month", value: totalWon > 0 ? formatLakhs(totalWon) : "₹0", delta: "+12%", icon: IndianRupee },
+    { label: "Hot leads", value: serverLeads.filter(l => l.score > 75).length.toString(), delta: "+2", icon: Flame },
+    { label: "Pending replies", value: pendingReplies.toString(), delta: "-1", icon: MessageSquareDot },
+    { label: "Conversions", value: wonLeads.length.toString(), delta: "+5%", icon: TrendingUp },
+  ];
+
+  const revenueSeries = [
+    { month: "Jan", revenue: 2.4 },
+    { month: "Feb", revenue: 3.1 },
+    { month: "Mar", revenue: 2.8 },
+    { month: "Apr", revenue: 4.2 },
+    { month: "May", revenue: 3.9 },
+    { month: "Jun", revenue: totalWon > 0 ? totalWon / 100000 : 4.5 }, // Current month mock
+  ];
+  
+  const [now, setNow] = useState(new Date());
+
+  useEffect(() => {
+    const timer = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  if (loadingLeads || loadingTasks) {
+    return <div className="p-8 text-center text-muted-foreground">Loading dashboard...</div>;
+  }
 
   return (
     <div className="space-y-5">
       <header className="rise">
-        <p className="text-muted-foreground text-sm">Friday, 31 July</p>
+        <p className="text-muted-foreground text-sm">
+          {now.toLocaleDateString("en-US", { weekday: "long", day: "numeric", month: "long" })}
+        </p>
         <h1 className="mt-1 text-3xl font-bold tracking-tight sm:text-4xl">
-          Good morning, John <span className="inline-block">👋</span>
+          {now.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" })}
         </h1>
       </header>
 
@@ -54,10 +100,10 @@ function Dashboard() {
           <Sparkles className="text-primary h-4 w-4" /> AI Summary
         </div>
         <p className="text-lg leading-relaxed font-medium sm:text-xl">
-          Today you have <span className="text-primary">8 hot leads</span>,{" "}
-          <span className="text-primary">3 meetings</span> and{" "}
-          <span className="text-primary">12 follow-ups</span>. Expected revenue{" "}
-          <span className="text-primary">₹4.2 Lakhs</span>.
+          Today you have <span className="text-primary">{hot.length} hot leads</span>,{" "}
+          <span className="text-primary">{todayTasks.filter(t => t.tag.toLowerCase().includes('meet')).length} meetings</span> and{" "}
+          <span className="text-primary">{followUps} follow-ups</span>. Expected revenue{" "}
+          <span className="text-primary">{formatLakhs(totalExpected)}</span>.
         </p>
         <div className="mt-4 flex flex-wrap gap-2">
           <Island icon={<Plus className="h-4 w-4" />} onClick={() => toast.success("Lead form opened")}>
@@ -134,15 +180,17 @@ function Dashboard() {
         <GlassCard delay={380}>
           <SectionTitle title="AI suggestions" />
           <ul className="mt-2 space-y-3 text-sm">
-            {[
-              "Call Aarav Mehta — 94% buying intent.",
-              "Sara Kapoor hasn't replied in 2 days. Nudge her.",
-              "Dev Sharma is price sensitive — send ROI proof.",
-            ].map((s) => (
-              <li key={s} className="glass rounded-[18px] px-3 py-2.5 leading-snug">
-                {s}
+            {hot.length > 0 ? (
+              hot.map(l => (
+                <li key={`sug-${l.id}`} className="text-muted-foreground px-3 py-2 text-xs border-b border-border/40 last:border-0">
+                  <strong className="text-foreground">{l.name}</strong> has a high intent score. Consider scheduling a demo soon.
+                </li>
+              ))
+            ) : (
+              <li className="text-muted-foreground px-3 py-2.5 text-center text-xs">
+                No suggestions available yet.
               </li>
-            ))}
+            )}
           </ul>
           <Link
             to="/ai-brain"
@@ -181,21 +229,21 @@ function Dashboard() {
         <GlassCard delay={460}>
           <SectionTitle title="Today's schedule" />
           <ul className="mt-3 space-y-3 text-sm">
-            {[
-              { t: "11:00", d: "Demo — Lumen Studio" },
-              { t: "14:30", d: "Pricing call — Nimbus" },
-              { t: "17:00", d: "Renewal — Bright Foods" },
-            ].map((e) => (
-              <li key={e.t} className="flex items-center gap-3">
-                <span className="bg-primary-soft text-primary grid h-9 w-9 place-items-center rounded-2xl">
-                  <CalendarDays className="h-4 w-4" />
-                </span>
-                <span className="min-w-0">
-                  <span className="block text-xs font-semibold">{e.t}</span>
-                  <span className="text-muted-foreground block truncate text-xs">{e.d}</span>
-                </span>
+            {todayTasks.length > 0 ? (
+              todayTasks.map(t => (
+                <li key={t.id} className="flex justify-between items-center text-xs border-b border-border/40 pb-2 last:border-0 last:pb-0">
+                  <span>
+                    <strong className="text-foreground block">{t.title}</strong>
+                    <span className="text-muted-foreground">{t.lead}</span>
+                  </span>
+                  <span className="bg-primary/10 text-primary px-2 py-1 rounded-full">{t.tag}</span>
+                </li>
+              ))
+            ) : (
+              <li className="text-muted-foreground px-3 py-2.5 text-center text-xs">
+                No meetings scheduled today.
               </li>
-            ))}
+            )}
           </ul>
         </GlassCard>
       </div>

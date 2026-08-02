@@ -1,24 +1,56 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link } from "@tanstack/react-router";
 import { Bot, X, Send } from "lucide-react";
 import { Island, GlassCard } from "@/components/glass";
-import { aiReply, aiSuggestions } from "@/lib/mock-data";
+import { getAiReply } from "@/lib/ai";
+
+const WIDGET_STORAGE_KEY = "salesmind-ask-ai-state";
+
+const aiSuggestions: string[] = [
+  "What's in my pipeline today?",
+  "Which leads are at risk?",
+  "Draft a follow-up email",
+  "Summarize my recent calls",
+];
+
+function loadWidgetState(): { q: string; answer: string | null } {
+  try {
+    const raw = localStorage.getItem(WIDGET_STORAGE_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch {
+    // Ignore
+  }
+  return { q: "", answer: null };
+}
+
+function saveWidgetState(q: string, answer: string | null) {
+  try {
+    localStorage.setItem(WIDGET_STORAGE_KEY, JSON.stringify({ q, answer }));
+  } catch {
+    // Ignore
+  }
+}
 
 export function AskAiIsland() {
   const [open, setOpen] = useState(false);
-  const [q, setQ] = useState("");
-  const [answer, setAnswer] = useState<string | null>(null);
+  const [q, setQ] = useState(() => loadWidgetState().q);
+  const [answer, setAnswer] = useState<string | null>(() => loadWidgetState().answer);
   const [thinking, setThinking] = useState(false);
 
-  function ask(text: string) {
+  // Persist state whenever it changes
+  useEffect(() => {
+    if (!thinking) saveWidgetState(q, answer);
+  }, [q, answer, thinking]);
+
+  async function ask(text: string) {
     if (!text.trim()) return;
     setThinking(true);
     setAnswer(null);
     setQ(text);
-    setTimeout(() => {
-      setAnswer(aiReply(text));
-      setThinking(false);
-    }, 650);
+
+    const reply = await getAiReply(text);
+    setAnswer(reply);
+    setThinking(false);
   }
 
   return (

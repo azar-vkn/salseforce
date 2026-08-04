@@ -74,14 +74,18 @@ serve(async (req: Request): Promise<Response> => {
         lead = newLead;
       }
 
+      // Fetch the actual conversation thread for this lead
+      const { data: convData } = await supabase.from("conversations").select("id").eq("lead_id", lead?.id).maybeSingle();
+
       // Append incoming message to messages table
-      if (lead) {
+      if (lead && convData) {
         await supabase.from("messages").insert({
-          conversation_id: lead.id,
-          sender_type: "lead",
-          content: messageText,
+          conversation_id: convData.id,
+          lead_id: lead.id,
+          from_type: "them",
+          text: messageText,
           channel: "whatsapp",
-          delivery_status: "read",
+          status: "read",
         });
       }
 
@@ -124,13 +128,14 @@ serve(async (req: Request): Promise<Response> => {
       }
 
       // Save AI reply in Supabase
-      if (lead) {
+      if (lead && convData) {
         await supabase.from("messages").insert({
-          conversation_id: lead.id,
-          sender_type: "ai_agent",
-          content: aiReply,
+          conversation_id: convData.id,
+          lead_id: lead.id,
+          from_type: "ai_agent",
+          text: aiReply,
           channel: "whatsapp",
-          delivery_status: "sent",
+          status: "sent",
           ai_confidence: 92,
         });
       }

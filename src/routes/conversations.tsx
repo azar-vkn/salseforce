@@ -22,7 +22,7 @@ import {
 } from "lucide-react";
 import { GlassCard, Island, Ring, SectionTitle } from "@/components/glass";
 import { type Message, type ChannelType } from "@/lib/types";
-import { useLeads, useConversations, useUpdateConversation, useUpdateLead, useAiRules } from "@/hooks/use-supabase";
+import { useLeads, useConversations, useAddMessage, useUpdateLead, useAiRules } from "@/hooks/use-supabase";
 import { useRealtimePresence } from "@/hooks/use-realtime";
 import { generateAutonomousReply } from "@/lib/ai-service";
 import { sendWhatsAppTextMessage } from "@/lib/whatsapp";
@@ -57,7 +57,7 @@ function Conversations() {
   const { data: serverLeads = [], isLoading: loadingLeads } = useLeads();
   const { data: serverThreads = [], isLoading: loadingThreads } = useConversations();
   const { data: aiRules } = useAiRules();
-  const updateConversationMutation = useUpdateConversation();
+  const addMessageMutation = useAddMessage();
   const updateLeadMutation = useUpdateLead();
 
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -106,8 +106,7 @@ function Conversations() {
       status: "read",
     };
 
-    const updated = [...messages, incomingMsg];
-    updateConversationMutation.mutate({ id: activeId, data: { messages: updated } });
+    addMessageMutation.mutate({ leadId: activeId, message: incomingMsg });
     toast.info(`📩 [${channel.toUpperCase()}] New query from ${lead.name}: "${queryText}"`);
 
     // Evaluate AI Auto-reply
@@ -130,8 +129,7 @@ function Conversations() {
               aiConfidence: result.confidence,
             };
 
-            const autoUpdated = [...updated, aiMsg];
-            updateConversationMutation.mutate({ id: activeId, data: { messages: autoUpdated } });
+            addMessageMutation.mutate({ leadId: activeId, message: aiMsg });
 
             // Apply dynamic Buyer DNA updates & emotion
             if (result.updatedDna || result.suggestedAction || result.detectedEmotion) {
@@ -175,8 +173,7 @@ function Conversations() {
       status: "delivered",
     };
 
-    const updatedMessages = [...messages, newMessage];
-    updateConversationMutation.mutate({ id: activeId, data: { messages: updatedMessages } });
+    addMessageMutation.mutate({ leadId: activeId, message: newMessage });
     
     // Update lead status
     updateLeadMutation.mutate({ id: activeId, data: { status: "Replied" } });

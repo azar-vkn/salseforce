@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/lib/supabase";
+import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 import { type Lead, type Task, type ConversationThread, type AiAgentRule } from "@/lib/types";
 import { broadcastDemoEvent } from "./use-realtime";
 
@@ -264,24 +264,23 @@ function setLocalCache<T>(key: string, data: T[]) {
 }
 
 // ── Generic Fetch with Fallback ────────────────────────────────────
-async function fetchTableWithFallback<T extends { id: string }>(tableName: string, seed: T[]): Promise<T[]> {
+async function fetchTableWithFallback<T extends { id: string }>(
+  tableName: string, 
+  seed: T[], 
+  selectQuery: string = "*",
+  mapper?: (row: any) => T
+): Promise<T[]> {
   const localData = getLocalCache<T>(tableName, seed);
 
   if (isSupabaseConfigured) {
     try {
-      const { data, error } = await supabase.from(tableName).select("*");
-      if (!error && data && data.length > 0) {
-        const remoteMap = new Map((data as T[]).map((item) => [item.id, item]));
-        const merged = localData.map((item) => remoteMap.get(item.id) || item);
-
-        (data as T[]).forEach((item) => {
-          if (!merged.some((m) => m.id === item.id)) {
-            merged.push(item);
-          }
-        });
-
-        setLocalCache(tableName, merged);
-        return merged;
+      const { data, error } = await supabase.from(tableName).select(selectQuery);
+      if (!error && data) {
+        // If Supabase has data (or even if it's explicitly empty), it should be the source of truth.
+        // We overwrite the local cache with Supabase data to prevent mock seeds from reappearing.
+        const mappedData = mapper ? data.map(mapper) : (data as T[]);
+        setLocalCache(tableName, mappedData);
+        return mappedData;
       }
     } catch {
       // Ignore fetch error, fallback to local storage
@@ -304,7 +303,28 @@ export const INITIAL_AI_RULES: AiAgentRule = {
 export function useLeads() {
   return useQuery({
     queryKey: ["leads"],
-    queryFn: () => fetchTableWithFallback<Lead>("leads", INITIAL_LEADS),
+    queryFn: () => fetchTableWithFallback<Lead>(
+      "leads", 
+      INITIAL_LEADS, 
+      "*, buyer_dna(*)",
+      (row) => {
+        const dnaRow = Array.isArray(row.buyer_dna) ? row.buyer_dna[0] : row.buyer_dna;
+        return {
+          ...row,
+          nextAction: row.next_action || "Initial outreach",
+          dna: dnaRow ? {
+            budget: dnaRow.budget ?? 50,
+            intent: dnaRow.intent ?? 50,
+            trust: dnaRow.trust ?? 50,
+            priceSensitivity: dnaRow.price_sensitivity ?? 50,
+            urgency: dnaRow.urgency ?? 50,
+            language: dnaRow.language || "English",
+            style: dnaRow.style || "Professional",
+            confidence: dnaRow.confidence ?? 60,
+          } : INITIAL_LEADS[0].dna
+        };
+      }
+    ),
   });
 }
 
@@ -312,9 +332,10 @@ export function useCreateLead() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (lead: Omit<Lead, "id">) => {
+      const newId = crypto.randomUUID();
       const newLead: Lead = {
         ...lead,
-        id: `lead-${Date.now()}`,
+        id: newId,
         initials: lead.initials || lead.name.slice(0, 2).toUpperCase(),
       };
       
@@ -326,7 +347,25 @@ export function useCreateLead() {
       // Attempt Supabase insert if configured
       if (isSupabaseConfigured) {
         try {
-          await supabase.from("leads").insert(newLead);
+          const { dna, nextAction, ...rest } = newLead;
+          await supabase.from("leads").insert({
+            ...rest,
+            id: newId,
+            next_action: nextAction
+          });
+          
+          if (dna) {
+            await supabase.from("buyer_dna").update({
+              budget: dna.budget,
+              intent: dna.intent,
+              trust: dna.trust,
+              price_sensitivity: dna.priceSensitivity,
+              urgency: dna.urgency,
+              language: dna.language,
+              style: dna.style,
+              confidence: dna.confidence
+            }).eq("lead_id", newId);
+          }
         } catch {
           // Ignore fallback
         }
@@ -374,9 +413,29 @@ export function useUpdateLead() {
       // 2. Attempt Supabase update if configured
       if (isSupabaseConfigured) {
         try {
-          const { error } = await supabase.from("leads").update(data).eq("id", id);
-          if (error) {
-            console.warn("Supabase lead update error:", error.message);
+          const dbData: any = { ...data };
+          if (dbData.nextAction !== undefined) {
+            dbData.next_action = dbData.nextAction;
+            delete dbData.nextAction;
+          }
+          const { dna, ...leadsData } = dbData;
+          
+          if (Object.keys(leadsData).length > 0) {
+            const { error } = await supabase.from("leads").update(leadsData).eq("id", id);
+            if (error) console.warn("Supabase lead update error:", error.message);
+          }
+          
+          if (dna) {
+             await supabase.from("buyer_dna").update({
+               budget: dna.budget,
+               intent: dna.intent,
+               trust: dna.trust,
+               price_sensitivity: dna.priceSensitivity,
+               urgency: dna.urgency,
+               language: dna.language,
+               style: dna.style,
+               confidence: dna.confidence
+             }).eq("lead_id", id);
           }
         } catch (e) {
           console.warn("Supabase lead update exception:", e);
@@ -496,31 +555,70 @@ export function useDeleteTask() {
 export function useConversations() {
   return useQuery({
     queryKey: ["conversations"],
-    queryFn: () => fetchTableWithFallback<ConversationThread>("conversations", INITIAL_CONVERSATIONS),
+    queryFn: async () => {
+      const local = getLocalCache<ConversationThread>("conversations", INITIAL_CONVERSATIONS);
+      if (!isSupabaseConfigured) return local;
+
+      try {
+        const { data, error } = await supabase.from("conversations").select("*, messages(*)");
+        if (!error && data) {
+           const result: ConversationThread[] = data.map(conv => {
+              const msgs = Array.isArray(conv.messages) ? conv.messages : [];
+              return {
+                id: conv.lead_id, // Map lead_id to frontend thread id
+                messages: msgs.sort((a,b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()).map(msg => ({
+                   id: msg.id,
+                   from: msg.from_type as any,
+                   text: msg.text,
+                   time: new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                   channel: msg.channel as any,
+                   status: msg.status as any,
+                   aiConfidence: msg.ai_confidence
+                }))
+              };
+           });
+           setLocalCache("conversations", result);
+           return result;
+        }
+      } catch {}
+      return local;
+    },
   });
 }
 
-export function useUpdateConversation() {
+export function useAddMessage() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async ({ id, data }: { id: string; data: Partial<ConversationThread> }) => {
-      try {
-        await supabase.from("conversations").update(data).eq("id", id);
-      } catch {
-        // Ignore
-      }
-
+    mutationFn: async ({ leadId, message }: { leadId: string; message: Message }) => {
       const current = getLocalCache<ConversationThread>("conversations", INITIAL_CONVERSATIONS);
-      const existing = current.find((c) => c.id === id);
-      let updated: ConversationThread[];
-
+      let updated = [...current];
+      const existing = updated.find((c) => c.id === leadId);
       if (existing) {
-        updated = current.map((c) => (c.id === id ? { ...c, ...data } : c));
+        existing.messages = [...existing.messages, message];
       } else {
-        updated = [...current, { id, messages: data.messages ?? [] }];
+        updated.push({ id: leadId, messages: [message] });
       }
-
       setLocalCache("conversations", updated);
+
+      if (isSupabaseConfigured) {
+        try {
+          const { data: convData } = await supabase.from("conversations").select("id").eq("lead_id", leadId).single();
+          if (convData) {
+            await supabase.from("messages").insert({
+              id: message.id,
+              conversation_id: convData.id,
+              lead_id: leadId,
+              from_type: message.from,
+              text: message.text,
+              channel: message.channel || 'whatsapp',
+              status: message.status || 'sent',
+              ai_confidence: message.aiConfidence
+            });
+          }
+        } catch (e) {
+           console.error("Failed to insert message", e);
+        }
+      }
       broadcastDemoEvent("SYNC_CONVERSATIONS");
     },
     onSuccess: () => {

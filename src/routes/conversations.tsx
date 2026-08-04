@@ -68,6 +68,9 @@ function Conversations() {
   const [isAiReplying, setIsAiReplying] = useState(false);
   const [suggestedDraft, setSuggestedDraft] = useState<{ text: string; confidence: number } | null>(null);
 
+  const [editingPhone, setEditingPhone] = useState(false);
+  const [tempPhone, setTempPhone] = useState("");
+
   const { typingUsers, sendTyping } = useRealtimePresence(activeId);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
@@ -191,7 +194,10 @@ function Conversations() {
         }
       });
     } else {
-      toast.warning("⚠️ No phone number saved for this lead. Go to Leads tab and edit this lead to add their phone number.");
+      const candidatePhone = lead?.value && /^\d{7,}$/.test(lead.value.trim()) ? lead.value.trim() : "";
+      setTempPhone(candidatePhone);
+      setEditingPhone(true);
+      toast.warning(`⚠️ No phone number saved for ${lead?.name}. Type phone number in the banner above and click Save Phone!`);
     }
 
 
@@ -337,6 +343,23 @@ function Conversations() {
                     <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
                     Online
                   </span>
+                  {lead.phone || lead.whatsapp ? (
+                    <span className="flex items-center gap-1 text-emerald-500 font-medium bg-emerald-500/10 px-2 py-0.5 rounded-full text-[11px]">
+                      📱 {lead.phone || lead.whatsapp}
+                      <button onClick={() => { setTempPhone(lead.phone || lead.whatsapp || ""); setEditingPhone(true); }} className="ml-1 text-muted-foreground hover:text-foreground">✏️</button>
+                    </span>
+                  ) : (
+                    <button
+                      onClick={() => {
+                        const candidate = lead?.value && /^\d{7,}$/.test(lead.value.trim()) ? lead.value.trim() : "";
+                        setTempPhone(candidate);
+                        setEditingPhone(true);
+                      }}
+                      className="flex items-center gap-1 text-amber-500 font-semibold bg-amber-500/15 hover:bg-amber-500/25 px-2.5 py-0.5 rounded-full text-[11px] transition"
+                    >
+                      ⚠️ Add WhatsApp Number
+                    </button>
+                  )}
                 </div>
                 <span className="text-muted-foreground block truncate text-xs">
                   {lead.company} · Stage: <strong className="text-foreground">{lead.stage}</strong> · Score: {lead.score}/100
@@ -359,6 +382,47 @@ function Conversations() {
               </button>
             </div>
           </div>
+
+          {/* Quick Phone Edit Banner */}
+          {editingPhone && (
+            <div className="bg-amber-500/10 border-b border-amber-500/20 px-4 py-2.5 flex flex-wrap items-center justify-between gap-2 text-xs backdrop-blur-sm animate-in fade-in slide-in-from-top-1">
+              <div className="flex items-center gap-2 flex-1 min-w-[240px]">
+                <span className="font-semibold text-amber-600 dark:text-amber-400 shrink-0">📱 WhatsApp Phone Number for {lead?.name}:</span>
+                <input
+                  value={tempPhone}
+                  onChange={(e) => setTempPhone(e.target.value)}
+                  placeholder="e.g. +91 98765 43210 or 67898789"
+                  className="bg-background px-3 py-1 rounded-lg border border-amber-500/40 text-xs w-60 outline-none focus:ring-2 focus:ring-amber-500"
+                  autoFocus
+                />
+              </div>
+              <div className="flex items-center gap-1.5">
+                <button
+                  onClick={() => {
+                    if (!tempPhone.trim()) return;
+                    updateLeadMutation.mutate(
+                      { id: lead.id, data: { phone: tempPhone.trim(), whatsapp: tempPhone.trim() } },
+                      {
+                        onSuccess: () => {
+                          toast.success(`Saved WhatsApp number for ${lead.name}`);
+                          setEditingPhone(false);
+                        },
+                      }
+                    );
+                  }}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold px-3 py-1 rounded-lg transition"
+                >
+                  Save Phone
+                </button>
+                <button
+                  onClick={() => setEditingPhone(false)}
+                  className="px-2.5 py-1 text-muted-foreground hover:text-foreground rounded-lg"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* Messages Stream */}
           <div className="flex-1 space-y-3.5 overflow-y-auto px-4 py-4 max-h-[26rem]">

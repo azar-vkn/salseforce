@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { LayoutGrid, Rows3, Plus, PhoneCall, MessageCircle, CalendarPlus, Search, X, Edit2, Trash, Download } from "lucide-react";
 import { GlassCard, Island, Ring } from "@/components/glass";
@@ -39,6 +39,7 @@ const defaultDna = {
 };
 
 function LeadsPage() {
+  const navigate = useNavigate();
   const [view, setView] = useState<"cards" | "table">("cards");
   const [query, setQuery] = useState("");
   const [selectedStage, setSelectedStage] = useState<string>("All");
@@ -184,15 +185,21 @@ function LeadsPage() {
                   {l.emotion}
                 </span>
                 <span className="glass rounded-full px-2.5 py-1">{l.status}</span>
-                <span className="bg-primary/10 text-primary rounded-full px-2.5 py-1">{l.value}</span>
+                <span className="bg-primary/10 text-primary rounded-full px-2.5 py-1">Deal: {l.value}</span>
               </div>
 
-              {(l.phone || l.email) && (
-                <div className="mt-3 space-y-1 text-xs text-muted-foreground">
-                  {l.phone && <div>📞 {l.phone}</div>}
-                  {l.email && <div>✉️ {l.email}</div>}
-                </div>
-              )}
+              <div className="mt-3 space-y-1 text-xs text-muted-foreground">
+                {l.phone || l.whatsapp ? (
+                  <div className="text-foreground font-medium flex items-center gap-1">
+                    <span>📞</span> {l.phone || l.whatsapp}
+                  </div>
+                ) : (
+                  <div className="text-amber-500 font-medium flex items-center gap-1">
+                    <span>⚠️</span> No phone number saved
+                  </div>
+                )}
+                {l.email && <div>✉️ {l.email}</div>}
+              </div>
 
               <p className="text-muted-foreground mt-3 text-xs">
                 Next action · <span className="text-foreground font-medium">{l.nextAction}</span>
@@ -211,7 +218,7 @@ function LeadsPage() {
                   variant="glass"
                   className="px-3 py-2 text-xs"
                   icon={<MessageCircle className="h-3.5 w-3.5" />}
-                  onClick={() => toast(`Message drafted for ${l.name}`)}
+                  onClick={() => navigate({ to: "/conversations" })}
                 >
                   Message
                 </Island>

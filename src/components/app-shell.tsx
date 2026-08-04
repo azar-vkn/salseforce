@@ -61,7 +61,7 @@ function ThemeToggle({ compact = false }: { compact?: boolean }) {
 
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
-  const { session } = useAuth();
+  const { session, logout } = useAuth();
   const email = session?.user?.email || "User";
 
   return (
@@ -108,7 +108,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-xs font-semibold">{email}</span>
                 <button
-                  onClick={() => supabase.auth.signOut()}
+                  onClick={() => logout()}
                   className="text-muted-foreground hover:text-foreground flex items-center gap-1 text-[10px] font-medium transition"
                 >
                   <LogOut className="h-3 w-3" /> Sign out

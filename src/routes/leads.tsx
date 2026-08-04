@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
-import { LayoutGrid, Rows3, Plus, PhoneCall, MessageCircle, CalendarPlus, Search, X, Edit2, Trash } from "lucide-react";
+import { LayoutGrid, Rows3, Plus, PhoneCall, MessageCircle, CalendarPlus, Search, X, Edit2, Trash, Download } from "lucide-react";
 import { GlassCard, Island, Ring } from "@/components/glass";
 import { type Lead } from "@/lib/types";
 import { useLeads, useCreateLead, useUpdateLead, useDeleteLead } from "@/hooks/use-supabase";
@@ -24,6 +24,7 @@ const emotionTone: Record<Lead["emotion"], string> = {
   Curious: "bg-chart-3/20 text-foreground",
   Hesitant: "bg-warning/20 text-foreground",
   Neutral: "bg-muted text-muted-foreground",
+  Frustrated: "bg-destructive/20 text-destructive",
 };
 
 const defaultDna = {
@@ -40,6 +41,7 @@ const defaultDna = {
 function LeadsPage() {
   const [view, setView] = useState<"cards" | "table">("cards");
   const [query, setQuery] = useState("");
+  const [selectedStage, setSelectedStage] = useState<string>("All");
   const [selected, setSelected] = useState<Lead | null>(null);
   const [editingLead, setEditingLead] = useState<Lead | null>(null);
   const [showAddForm, setShowAddForm] = useState(false);
@@ -49,9 +51,39 @@ function LeadsPage() {
   const updateLead = useUpdateLead();
   const deleteLead = useDeleteLead();
 
-  const filtered = leads.filter((l) =>
-    (l.name + l.company + l.stage).toLowerCase().includes(query.toLowerCase()),
-  );
+  const exportCsv = () => {
+    if (!leads.length) return;
+    const headers = ["ID", "Name", "Company", "Stage", "Score", "Value", "Emotion", "Status", "Email", "Phone"];
+    const rows = leads.map((l) => [
+      l.id,
+      `"${l.name}"`,
+      `"${l.company}"`,
+      l.stage,
+      l.score,
+      `"${l.value}"`,
+      l.emotion,
+      l.status,
+      l.email || "",
+      l.phone || "",
+    ]);
+    const csvContent = [headers.join(","), ...rows.map((r) => r.join(","))].join("\n");
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `salesmind-leads-${new Date().toISOString().slice(0, 10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    toast.success("Exported leads to CSV");
+  };
+
+  const filtered = leads.filter((l) => {
+    const matchesQuery = (l.name + l.company + l.stage).toLowerCase().includes(query.toLowerCase());
+    const matchesStage = selectedStage === "All" || l.stage === selectedStage;
+    return matchesQuery && matchesStage;
+  });
+
 
   if (isLoading) {
     return <div className="p-8 text-center text-muted-foreground">Loading leads...</div>;
@@ -64,12 +96,22 @@ function LeadsPage() {
     <div className="space-y-5">
       <header className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 sm:flex sm:justify-between">
         <div className="min-w-0">
-          <h1 className="truncate text-2xl font-bold tracking-tight sm:text-3xl">Leads</h1>
-          <p className="text-muted-foreground mt-1 text-sm">{filtered.length} active opportunities</p>
+          <h1 className="truncate text-2xl font-bold tracking-tight sm:text-3xl">Leads Pipeline</h1>
+          <p className="text-muted-foreground mt-1 text-sm">{filtered.length} active opportunities · Realtime scoring & DNA</p>
         </div>
-        <Island icon={<Plus className="h-4 w-4" />} onClick={() => setShowAddForm(true)}>
-          Add Lead
-        </Island>
+        <div className="flex items-center gap-2">
+          <Island
+            variant="glass"
+            className="px-3 py-2 text-xs hover:scale-105 transition"
+            icon={<Download className="h-3.5 w-3.5" />}
+            onClick={exportCsv}
+          >
+            Export CSV
+          </Island>
+          <Island icon={<Plus className="h-4 w-4" />} onClick={() => setShowAddForm(true)}>
+            Add Lead
+          </Island>
+        </div>
       </header>
 
       <div className="flex flex-wrap items-center gap-2">
@@ -78,7 +120,7 @@ function LeadsPage() {
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search leads…"
+            placeholder="Search leads by name, company, or stage…"
             className="min-w-0 flex-1 bg-transparent text-sm outline-none"
           />
         </div>
@@ -98,6 +140,25 @@ function LeadsPage() {
           ))}
         </div>
       </div>
+
+      {/* Stage Filter Chips */}
+      <div className="flex flex-wrap gap-1.5">
+        {["All", "New", "Qualified", "Proposal", "Negotiation", "Won", "Lost"].map((st) => (
+          <button
+            key={st}
+            onClick={() => setSelectedStage(st)}
+            className={cn(
+              "px-3 py-1 text-xs font-semibold rounded-full transition",
+              selectedStage === st
+                ? "bg-primary text-primary-foreground shadow-xs"
+                : "glass text-muted-foreground hover:text-foreground"
+            )}
+          >
+            {st}
+          </button>
+        ))}
+      </div>
+
 
       {view === "cards" ? (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
@@ -286,6 +347,7 @@ function LeadsPage() {
       {/* Add/Edit Lead Modal */}
       {(showAddForm || editingLead) ? (
         <LeadFormModal
+          key={editingLead?.id || "new-lead"}
           initialData={editingLead}
           onClose={() => {
             setShowAddForm(false);
@@ -294,8 +356,11 @@ function LeadsPage() {
           onSave={(lead) => {
             if (editingLead) {
               updateLead.mutate({ id: editingLead.id, data: lead }, {
-                onSuccess: () => {
+                onSuccess: (updated) => {
                   toast.success("Lead updated successfully!");
+                  if (selected?.id === editingLead.id && updated) {
+                    setSelected(updated);
+                  }
                   setEditingLead(null);
                 },
                 onError: (err) => {
@@ -317,6 +382,7 @@ function LeadsPage() {
           isSaving={createLead.isPending || updateLead.isPending}
         />
       ) : null}
+
     </div>
   );
 }
@@ -351,6 +417,9 @@ function LeadFormModal({
       ? (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
       : name.trim().slice(0, 2).toUpperCase();
 
+    const phoneVal = phone.trim();
+    const whatsappVal = whatsapp.trim() || phoneVal;
+
     onSave({
       name: name.trim(),
       company: company.trim(),
@@ -361,11 +430,12 @@ function LeadFormModal({
       emotion: initialData?.emotion ?? "Neutral",
       status: initialData?.status ?? "Unread",
       value: value.trim() || "₹0",
-      phone: phone.trim() || undefined,
-      whatsapp: whatsapp.trim() || undefined,
+      phone: phoneVal || undefined,
+      whatsapp: whatsappVal || undefined,
       email: email.trim() || undefined,
       dna: initialData?.dna ?? defaultDna,
     });
+
   }
 
   const inputClass =

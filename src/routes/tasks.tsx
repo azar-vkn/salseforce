@@ -1,21 +1,21 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState, useEffect } from "react";
-import { Plus, X, Edit2, Trash } from "lucide-react";
+import { Plus, X, Edit2, Trash, Sparkles } from "lucide-react";
 import { GlassCard, Island, EmptyState } from "@/components/glass";
 import { type Task } from "@/lib/types";
-import { useTasks, useUpdateTask, useCreateTask, useDeleteTask } from "@/hooks/use-supabase";
+import { useTasks, useUpdateTask, useCreateTask, useDeleteTask, useLeads } from "@/hooks/use-supabase";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/tasks")({
   head: () => ({
     meta: [
-      { title: "Tasks — SalesMind AI" },
-      { name: "description", content: "Kanban tasks for today, tomorrow and upcoming follow-ups." },
+      { title: "Kanban Tasks & AI Action Plan — SalesMind AI" },
+      { name: "description", content: "Kanban tasks for today, tomorrow and upcoming follow-ups with AI automated daily planning." },
       { property: "og:title", content: "Tasks — SalesMind AI" },
       {
         property: "og:description",
-        content: "Kanban tasks for today, tomorrow and upcoming follow-ups.",
+        content: "Kanban tasks for today, tomorrow and upcoming follow-ups with AI automated daily planning.",
       },
     ],
   }),
@@ -31,6 +31,7 @@ const columns: { id: Task["column"]; label: string }[] = [
 
 function TasksPage() {
   const { data: serverTasks = [], isLoading, error } = useTasks();
+  const { data: leads = [] } = useLeads();
   const updateTaskMutation = useUpdateTask();
   const createTaskMutation = useCreateTask();
   const deleteTaskMutation = useDeleteTask();
@@ -53,6 +54,29 @@ function TasksPage() {
     updateTaskMutation.mutate({ id, data: { column } });
   }
 
+  function autoPlanDay() {
+    if (!leads.length) {
+      toast.info("No leads available to plan tasks for.");
+      return;
+    }
+
+    const highPriorityLeads = leads.filter((l) => l.score >= 60 || l.stage === "Proposal" || l.stage === "Negotiation");
+    const targetLeads = highPriorityLeads.length ? highPriorityLeads.slice(0, 3) : leads.slice(0, 3);
+
+    targetLeads.forEach((lead, idx) => {
+      setTimeout(() => {
+        createTaskMutation.mutate({
+          title: lead.nextAction || `Follow up with ${lead.name} regarding contract terms`,
+          lead: lead.name,
+          tag: lead.stage === "Proposal" ? "Quote" : "Call",
+          column: "today",
+        });
+      }, idx * 150);
+    });
+
+    toast.success(`🤖 AI automatically scheduled ${targetLeads.length} high-impact tasks for Today!`);
+  }
+
   if (isLoading) {
     return <div className="p-8 text-center text-muted-foreground">Loading tasks...</div>;
   }
@@ -64,16 +88,27 @@ function TasksPage() {
     <div className="space-y-5">
       <header className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 sm:flex sm:justify-between">
         <div className="min-w-0">
-          <h1 className="truncate text-2xl font-bold tracking-tight sm:text-3xl">Tasks</h1>
-          <p className="text-muted-foreground mt-1 text-sm">Drag cards between columns</p>
+          <h1 className="truncate text-2xl font-bold tracking-tight sm:text-3xl">Tasks & Daily Plan</h1>
+          <p className="text-muted-foreground mt-1 text-xs sm:text-sm">Realtime Kanban with AI-driven priority scheduling</p>
         </div>
-        <Island
-          icon={<Plus className="h-4 w-4" />}
-          onClick={() => setShowAddForm(true)}
-        >
-          Add Task
-        </Island>
+        <div className="flex items-center gap-2">
+          <Island
+            variant="glass"
+            className="px-3 py-2 text-xs hover:scale-105 transition"
+            icon={<Sparkles className="h-3.5 w-3.5 text-primary" />}
+            onClick={autoPlanDay}
+          >
+            AI Plan My Day
+          </Island>
+          <Island
+            icon={<Plus className="h-4 w-4" />}
+            onClick={() => setShowAddForm(true)}
+          >
+            Add Task
+          </Island>
+        </div>
       </header>
+
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         {columns.map((col, i) => {

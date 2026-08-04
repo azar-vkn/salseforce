@@ -14,6 +14,7 @@ import { AppShell } from "@/components/app-shell";
 import { Toaster } from "@/components/ui/sonner";
 import { AuthProvider, useAuth } from "@/contexts/auth-context";
 import { AuthScreen } from "@/components/auth-screen";
+import { useRealtimeSync } from "@/hooks/use-realtime";
 import { Loader2 } from "lucide-react";
 
 function NotFoundComponent() {
@@ -139,6 +140,7 @@ function RootComponent() {
 
 function AuthWrapper() {
   const { session, isLoading } = useAuth();
+  useRealtimeSync();
 
   if (isLoading) {
     return (
@@ -158,3 +160,4 @@ function AuthWrapper() {
     </AppShell>
   );
 }
+

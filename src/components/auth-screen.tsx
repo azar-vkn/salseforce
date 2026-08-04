@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { supabase } from "@/lib/supabase";
+import { useAuth } from "@/contexts/auth-context";
 import { toast } from "sonner";
-import { Bot, Loader2 } from "lucide-react";
+import { Bot, Loader2, Sparkles } from "lucide-react";
 import { GlassCard } from "@/components/glass";
 
 export function AuthScreen() {
@@ -9,6 +10,7 @@ export function AuthScreen() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const { loginAsDemo } = useAuth();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -29,6 +31,11 @@ export function AuthScreen() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleDemoLogin = () => {
+    loginAsDemo();
+    toast.success("Logged in as Demo User! Enjoy exploring SalesMind AI.");
   };
 
   return (
@@ -53,7 +60,7 @@ export function AuthScreen() {
         </div>
 
         <GlassCard className="mt-8 p-6 sm:p-8">
-          <form className="space-y-6" onSubmit={handleSubmit}>
+          <form className="space-y-5" onSubmit={handleSubmit}>
             <div>
               <label htmlFor="email" className="block text-sm font-medium text-foreground">
                 Email address
@@ -101,8 +108,25 @@ export function AuthScreen() {
               {isLogin ? "Sign in" : "Sign up"}
             </button>
           </form>
+
+          <div className="relative my-6 text-center">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-border/60" />
+            </div>
+            <span className="relative bg-background px-3 text-xs text-muted-foreground">OR</span>
+          </div>
+
+          <button
+            type="button"
+            onClick={handleDemoLogin}
+            className="flex w-full items-center justify-center gap-2 rounded-xl border border-primary/40 bg-primary/10 px-4 py-3 text-sm font-semibold text-primary transition hover:bg-primary/20"
+          >
+            <Sparkles className="h-4 w-4" />
+            Try Demo Mode (Instant Access)
+          </button>
         </GlassCard>
       </div>
     </div>
   );
 }
+

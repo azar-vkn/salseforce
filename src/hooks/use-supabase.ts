@@ -122,14 +122,7 @@ async function fetchTableWithFallback<T extends { id: string }>(
   return localData;
 }
 
-export const INITIAL_AI_RULES: AiAgentRule = {
-  autoReplyEnabled: true,
-  minConfidenceThreshold: 85,
-  systemPrompt: "You are SalesMind AI, an elite enterprise sales executive. Answer customer questions clearly, warmly, and concisely. Keep responses under 3 sentences and focus on driving value.",
-  tone: "Professional, warm, value-oriented",
-  prohibitedTopics: ["unauthorized discounts", "competitor slander", "internal operational details"],
-  knowledgeBase: "SalesMind AI is a real-time autonomous CRM with AI lead scoring, Buyer DNA analysis, and omnichannel WhatsApp/Email messaging.",
-};
+
 
 // ── Leads Hooks ───────────────────────────────────────────────────
 export function useLeads() {
@@ -212,21 +205,6 @@ export function useCreateLead() {
               confidence: newLead.dna.confidence
             }).catch(() => {});
           }
-        } catch (e) {
-          console.error("Supabase create lead error:", e);
-        }
-      }
-      const currentConvs = getLocalCache<ConversationThread>("conversations", INITIAL_CONVERSATIONS);
-      const updatedConvs = [{ id: newLead.id, messages: [] }, ...currentConvs];
-      setLocalCache("conversations", updatedConvs);
-      queryClient.setQueryData(["conversations"], updatedConvs);
-
-      // Async background Supabase sync
-      if (isSupabaseConfigured) {
-        try {
-          const payload = sanitizeLeadForSupabase(newLead);
-          await supabase.from("leads").insert(payload);
-          await supabase.from("conversations").upsert({ id: newLead.id, messages: [] });
         } catch (e) {
           console.error("Supabase create lead error:", e);
         }

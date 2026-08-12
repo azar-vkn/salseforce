@@ -128,8 +128,7 @@ function Conversations() {
             aiConfidence: result.confidence,
           };
 
-          const autoUpdated = [...currentMessages, aiMsg];
-          updateConversationMutation.mutate({ id: targetLead.id, data: { messages: autoUpdated } });
+          addMessageMutation.mutate({ leadId: targetLead.id, message: aiMsg });
 
           if (result.updatedDna || result.suggestedAction || result.detectedEmotion) {
             updateLeadMutation.mutate({
@@ -257,8 +256,7 @@ function Conversations() {
             toast.success(`📱 Sent to Meta API (+${targetPhone.replace(/\D/g, "")}). (Meta requires an inbound message from the customer within 24h for free-form text delivery).`);
           }
         } else if (res.error) {
-          const failedMessages = updatedMessages.map(m => m.id === newMessage.id ? { ...m, status: "failed" as const } : m);
-          updateConversationMutation.mutate({ id: activeId, data: { messages: failedMessages } });
+          addMessageMutation.mutate({ leadId: activeId, message: { ...newMessage, status: "failed" } });
           
           toast.error(res.error, {
             duration: 10000,
@@ -314,8 +312,7 @@ function Conversations() {
         channel: "whatsapp",
         status: "delivered",
       };
-      const updatedMessages = [...messages, tplMsg];
-      updateConversationMutation.mutate({ id: activeId!, data: { messages: updatedMessages } });
+      addMessageMutation.mutate({ leadId: activeId!, message: tplMsg });
       if (res.isSimulated) {
         toast.info("📋 Template simulated (Configure Meta API in Settings for live delivery)");
       } else {

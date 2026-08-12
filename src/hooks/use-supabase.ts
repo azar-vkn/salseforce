@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
-import { type Lead, type Task, type ConversationThread, type AiAgentRule, type CallRecord, type CallAutopilotSettings } from "@/lib/types";
+import { type Lead, type Task, type ConversationThread, type Message, type AiAgentRule, type CallRecord, type CallAutopilotSettings } from "@/lib/types";
 import { broadcastDemoEvent } from "./use-realtime";
 
 // ── Initial Seed Data ──────────────────────────────────────────────
@@ -110,7 +110,7 @@ async function fetchTableWithFallback<T extends { id: string }>(
     try {
       const { data, error } = await supabase.from(tableName).select(selectQuery);
       if (!error && data) {
-        const mappedData = mapper ? data.map(mapper) : (data as T[]);
+        const mappedData = mapper ? data.map(mapper) : (data as unknown as T[]);
         setLocalCache(tableName, mappedData);
         return mappedData;
       }
@@ -203,7 +203,7 @@ export function useCreateLead() {
               language: newLead.dna.language,
               style: newLead.dna.style,
               confidence: newLead.dna.confidence
-            }).catch(() => {});
+            });
           }
         } catch (e) {
           console.error("Supabase create lead error:", e);
@@ -254,7 +254,7 @@ export function useUpdateLead() {
               language: data.dna.language,
               style: data.dna.style,
               confidence: data.dna.confidence
-            }).eq("lead_id", id).catch(() => {});
+            }).eq("lead_id", id);
           }
         } catch (e) {
           console.error("Supabase update lead error:", e);
@@ -475,7 +475,7 @@ export function useAddMessage() {
               channel: message.channel || 'whatsapp',
               status: message.status || 'sent',
               ai_confidence: message.aiConfidence
-            }).catch(() => {});
+            });
           }
         } catch (e) {
            console.error("Failed to insert message", e);

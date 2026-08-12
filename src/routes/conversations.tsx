@@ -1,12 +1,10 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState, useEffect, useRef } from "react";
 import {
   Send,
   PhoneCall,
   CalendarPlus,
   FileText,
-  BookOpen,
-  Forward,
   ArrowLeft,
   Bot,
   Sparkles,
@@ -16,29 +14,35 @@ import {
   Globe,
   Mail,
   Smartphone,
-  Sliders,
   ShieldCheck,
   Zap,
+  Activity,
+  User,
+  Search,
+  MoreVertical,
+  Paperclip,
+  Smile,
+  Settings as SettingsIcon,
+  AlertTriangle,
 } from "lucide-react";
 import { GlassCard, Island, Ring, SectionTitle } from "@/components/glass";
-import { type Message, type ChannelType } from "@/lib/types";
-import { useLeads, useConversations, useAddMessage, useUpdateLead, useAiRules } from "@/hooks/use-supabase";
+import { type Message, type ChannelType, type Lead } from "@/lib/types";
+import { useLeads, useConversations, useAddMessage, useUpdateConversation, useUpdateLead, useAiRules, useCreateLead } from "@/hooks/use-supabase";
 import { useRealtimePresence } from "@/hooks/use-realtime";
 import { generateAutonomousReply } from "@/lib/ai-service";
-import { sendWhatsAppTextMessage } from "@/lib/whatsapp";
+import { sendWhatsAppTextMessage, sendWhatsAppTemplateMessage, getWhatsAppCredentials } from "@/lib/whatsapp";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-
 
 export const Route = createFileRoute("/conversations")({
   head: () => ({
     meta: [
-      { title: "Realtime Omnichannel Conversations — SalesMind AI" },
-      { name: "description", content: "Live omnichannel chat with AI autonomous responses, delivery tracking, and Buyer DNA extraction." },
-      { property: "og:title", content: "Realtime Conversations — SalesMind AI" },
+      { title: "Chats — SalesMind AI" },
+      { name: "description", content: "WhatsApp realtime chat with AI autopilot responses and Buyer DNA." },
+      { property: "og:title", content: "WhatsApp Chats — SalesMind AI" },
       {
         property: "og:description",
-        content: "Live omnichannel chat with AI autonomous responses, delivery tracking, and Buyer DNA extraction.",
+        content: "WhatsApp realtime chat with AI autopilot responses and Buyer DNA.",
       },
     ],
   }),
@@ -47,10 +51,10 @@ export const Route = createFileRoute("/conversations")({
 
 const sampleLeadQueries = [
   { text: "What are your enterprise pricing packages and seat discounts?", channel: "whatsapp" as ChannelType },
-  { text: "Can we schedule a live product demo tomorrow at 11am?", channel: "email" as ChannelType },
-  { text: "Do you support custom SLA, SOC2 Type II, and EU GDPR compliance?", channel: "webchat" as ChannelType },
+  { text: "Can we schedule a live product demo tomorrow at 11am?", channel: "whatsapp" as ChannelType },
+  { text: "Do you support custom SLA, SOC2 Type II, and EU GDPR compliance?", channel: "whatsapp" as ChannelType },
   { text: "Can I get a 20% discount for an annual upfront contract?", channel: "whatsapp" as ChannelType },
-  { text: "How long does onboarding take for a team of 40 sales reps?", channel: "email" as ChannelType },
+  { text: "How long does onboarding take for a team of 40 sales reps?", channel: "whatsapp" as ChannelType },
 ];
 
 function Conversations() {
@@ -59,11 +63,12 @@ function Conversations() {
   const { data: aiRules } = useAiRules();
   const addMessageMutation = useAddMessage();
   const updateLeadMutation = useUpdateLead();
+  const createLeadMutation = useCreateLead();
 
   const [activeId, setActiveId] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
   const [mobilePane, setMobilePane] = useState<"list" | "chat">("list");
-  const [activeChannel, setActiveChannel] = useState<"all" | ChannelType>("all");
+  const [searchQuery, setSearchQuery] = useState("");
   const [autoReply, setAutoReply] = useState(true);
   const [isAiReplying, setIsAiReplying] = useState(false);
   const [suggestedDraft, setSuggestedDraft] = useState<{ text: string; confidence: number } | null>(null);
@@ -89,14 +94,69 @@ function Conversations() {
   }, [messages, isAiReplying, suggestedDraft]);
 
   if (loadingLeads || loadingThreads) {
-    return <div className="p-8 text-center text-muted-foreground">Loading realtime conversations...</div>;
+    return (
+      <div className="flex h-96 items-center justify-center">
+        <div className="flex items-center gap-2.5 rounded-lg bg-card border border-border px-4 py-3 shadow-xs">
+          <div className="h-4 w-4 rounded-full border-2 border-[#008069] border-t-transparent animate-spin" />
+          <span className="text-xs font-medium text-foreground">Connecting to WhatsApp...</span>
+        </div>
+      </div>
+    );
   }
 
   if (!serverLeads.length) {
-    return <div className="p-8 text-center text-muted-foreground">No leads found in pipeline.</div>;
+    return <div className="p-8 text-center text-muted-foreground text-sm">No chats found in pipeline.</div>;
   }
 
   // ── AI Autonomous Query Handler ──────────────────────────────────
+  async function processAutoReply(queryText: string, targetLead: Lead, currentMessages: Message[], channel: ChannelType) {
+    if (!autoReply) return;
+    setIsAiReplying(true);
+    try {
+      const result = await generateAutonomousReply(queryText, targetLead, aiRules);
+      const threshold = aiRules?.minConfidenceThreshold ?? 85;
+
+      if (result.confidence >= threshold) {
+        setTimeout(() => {
+          const aiMsg: Message = {
+            id: crypto.randomUUID(),
+            from: "ai_agent",
+            text: result.replyText,
+            time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            channel,
+            status: "sent",
+            aiConfidence: result.confidence,
+          };
+
+          const autoUpdated = [...currentMessages, aiMsg];
+          updateConversationMutation.mutate({ id: targetLead.id, data: { messages: autoUpdated } });
+
+          if (result.updatedDna || result.suggestedAction || result.detectedEmotion) {
+            updateLeadMutation.mutate({
+              id: targetLead.id,
+              data: {
+                ...(result.updatedDna ? { dna: { ...targetLead.dna, ...result.updatedDna } } : {}),
+                ...(result.suggestedAction ? { nextAction: result.suggestedAction } : {}),
+                ...(result.detectedEmotion ? { emotion: result.detectedEmotion } : {}),
+                status: "Replied",
+              },
+            });
+          }
+
+          toast.success(`🤖 Auto-replied (${result.confidence}% conf.)`);
+          setIsAiReplying(false);
+        }, 1000);
+      } else {
+        setIsAiReplying(false);
+        setSuggestedDraft({ text: result.replyText, confidence: result.confidence });
+        toast.warning(`⚠️ AI Confidence (${result.confidence}%) < ${threshold}% threshold — Approval required`);
+      }
+    } catch {
+      setIsAiReplying(false);
+      toast.error("Failed to generate AI response");
+    }
+  }
+
   async function handleIncomingQuery(queryText: string, channel: ChannelType = "whatsapp") {
     if (!activeId || !lead) return;
 
@@ -104,63 +164,68 @@ function Conversations() {
       id: crypto.randomUUID(),
       from: "them",
       text: queryText,
-      time: "Just now",
+      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       channel,
       status: "read",
     };
 
+    const updated = [...messages, incomingMsg];
     addMessageMutation.mutate({ leadId: activeId, message: incomingMsg });
     toast.info(`📩 [${channel.toUpperCase()}] New query from ${lead.name}: "${queryText}"`);
 
-    // Evaluate AI Auto-reply
-    if (autoReply) {
-      setIsAiReplying(true);
-      try {
-        const result = await generateAutonomousReply(queryText, lead, aiRules);
-        const threshold = aiRules?.minConfidenceThreshold ?? 85;
+    await processAutoReply(queryText, lead, updated, channel);
+  }
 
-        // If confidence meets threshold -> auto reply
-        if (result.confidence >= threshold) {
-          setTimeout(() => {
-            const aiMsg: Message = {
-              id: crypto.randomUUID(),
-              from: "ai_agent",
-              text: result.replyText,
-              time: "Just now",
-              channel,
-              status: "sent",
-              aiConfidence: result.confidence,
-            };
-
-            addMessageMutation.mutate({ leadId: activeId, message: aiMsg });
-
-            // Apply dynamic Buyer DNA updates & emotion
-            if (result.updatedDna || result.suggestedAction || result.detectedEmotion) {
-              updateLeadMutation.mutate({
-                id: activeId,
-                data: {
-                  ...(result.updatedDna ? { dna: { ...lead.dna, ...result.updatedDna } } : {}),
-                  ...(result.suggestedAction ? { nextAction: result.suggestedAction } : {}),
-                  ...(result.detectedEmotion ? { emotion: result.detectedEmotion } : {}),
-                  status: "Replied",
-                },
-              });
-            }
-
-            toast.success(`🤖 Auto-replied (${result.confidence}% confidence) & updated Buyer DNA`);
-            setIsAiReplying(false);
-          }, 1200);
-        } else {
-          // If confidence is lower -> show draft for rep review
-          setIsAiReplying(false);
-          setSuggestedDraft({ text: result.replyText, confidence: result.confidence });
-          toast.warning(`⚠️ AI Confidence (${result.confidence}%) < ${threshold}% threshold — Rep review required`);
-        }
-      } catch {
-        setIsAiReplying(false);
-        toast.error("Failed to generate AI response");
+  async function handleUnknownInbound() {
+    const randomPhone = `9198${Math.floor(10000000 + Math.random() * 90000000)}`;
+    const queryText = "Hi, I'm looking for an enterprise CRM solution. Do you have a demo?";
+    
+    createLeadMutation.mutate(
+      {
+        name: `New Inquiry (+${randomPhone})`,
+        company: "Unknown",
+        initials: "NEW",
+        score: 75,
+        stage: "New",
+        nextAction: "Review inbound message",
+        emotion: "Curious",
+        status: "Unread",
+        value: "₹0",
+        phone: randomPhone,
+        whatsapp: randomPhone,
+        dna: {
+          budget: 60,
+          intent: 80,
+          trust: 50,
+          priceSensitivity: 50,
+          urgency: 70,
+          language: "English",
+          style: "Direct Inbound",
+          confidence: 70,
+        },
+      },
+      {
+        onSuccess: (newLead) => {
+          setActiveId(newLead.id);
+          setMobilePane("chat");
+          
+          const incomingMsg: Message = {
+            id: crypto.randomUUID(),
+            from: "them",
+            text: queryText,
+            time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            channel: "whatsapp",
+            status: "read",
+          };
+          
+          const updatedMessages = [incomingMsg];
+          addMessageMutation.mutate({ leadId: newLead.id, message: incomingMsg });
+          toast.info(`📩 Auto-created new lead from WhatsApp: +${randomPhone}`);
+          
+          processAutoReply(queryText, newLead, updatedMessages, "whatsapp");
+        },
       }
-    }
+    );
   }
 
   // ── Send Rep Message ─────────────────────────────────────────────
@@ -171,7 +236,7 @@ function Conversations() {
       id: crypto.randomUUID(),
       from: "me",
       text,
-      time: "Just now",
+      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       channel: "whatsapp",
       status: "delivered",
     };
@@ -181,102 +246,174 @@ function Conversations() {
     // Update lead status
     updateLeadMutation.mutate({ id: activeId, data: { status: "Replied" } });
 
-    // Dispatch out over Meta WhatsApp Cloud API if phone & token present
+    // Dispatch out over Meta WhatsApp Cloud API if phone present
     const targetPhone = lead?.phone || lead?.whatsapp;
     if (targetPhone) {
       sendWhatsAppTextMessage({ to: targetPhone, body: text }).then((res) => {
         if (res.success) {
-          if (res.messageId && !res.messageId.startsWith("sim_")) {
-            toast.success(`📱 WhatsApp sent to ${targetPhone} via Meta API!`);
+          if (res.isSimulated) {
+            toast.info("💬 Saved to CRM (Simulation mode: configure Meta API in Settings for live WhatsApp delivery)");
+          } else if (res.messageId) {
+            toast.success(`📱 Sent to Meta API (+${targetPhone.replace(/\D/g, "")}). (Meta requires an inbound message from the customer within 24h for free-form text delivery).`);
           }
         } else if (res.error) {
-          toast.error(`WhatsApp Error: ${res.error}`);
+          const failedMessages = updatedMessages.map(m => m.id === newMessage.id ? { ...m, status: "failed" as const } : m);
+          updateConversationMutation.mutate({ id: activeId, data: { messages: failedMessages } });
+          
+          toast.error(res.error, {
+            duration: 10000,
+            action: {
+              label: "Open Settings",
+              onClick: () => {
+                window.location.href = "/settings";
+              },
+            },
+          });
         }
       });
     } else {
       const candidatePhone = lead?.value && /^\d{7,}$/.test(lead.value.trim()) ? lead.value.trim() : "";
       setTempPhone(candidatePhone);
       setEditingPhone(true);
-      toast.warning(`⚠️ No phone number saved for ${lead?.name}. Type phone number in the banner above and click Save Phone!`);
+      toast.warning(`⚠️ Please save a WhatsApp phone number for ${lead?.name}`);
     }
-
 
     setDraft("");
     setSuggestedDraft(null);
     sendTyping(false);
   }
 
-
-  // Channel helper icon
-  const getChannelIcon = (ch?: ChannelType) => {
-    switch (ch) {
-      case "email":
-        return <Mail className="h-3 w-3 text-blue-400" />;
-      case "webchat":
-        return <Globe className="h-3 w-3 text-purple-400" />;
-      case "sms":
-        return <Smartphone className="h-3 w-3 text-amber-400" />;
-      default:
-        return <span className="h-2 w-2 rounded-full bg-emerald-500" />;
+  async function handleSendTemplate() {
+    const targetPhone = lead?.phone || lead?.whatsapp;
+    if (!targetPhone) {
+      toast.warning("Please save a phone number for this lead first.");
+      return;
     }
-  };
+    const tId = toast.loading("Sending WhatsApp template...");
+    const res = await sendWhatsAppTemplateMessage({
+      to: targetPhone,
+      templateName: "jaspers_market_order_confirmation_v1",
+      components: [
+        {
+          type: "body",
+          parameters: [
+            { type: "text", text: lead.name || "Customer" },
+            { type: "text", text: "123456" },
+            { type: "text", text: new Date().toLocaleDateString() },
+          ],
+        },
+      ],
+    });
+    toast.dismiss(tId);
+    if (res.success) {
+      const tplMsg: Message = {
+        id: crypto.randomUUID(),
+        from: "me",
+        text: `📋 [WhatsApp Template Delivered]: jaspers_market_order_confirmation_v1`,
+        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        channel: "whatsapp",
+        status: "delivered",
+      };
+      const updatedMessages = [...messages, tplMsg];
+      updateConversationMutation.mutate({ id: activeId!, data: { messages: updatedMessages } });
+      if (res.isSimulated) {
+        toast.info("📋 Template simulated (Configure Meta API in Settings for live delivery)");
+      } else {
+        toast.success(`📱 WhatsApp Template delivered!`);
+      }
+    } else {
+      toast.error(res.error || "WhatsApp Template Error", {
+        duration: 10000,
+        action: {
+          label: "Open Settings",
+          onClick: () => {
+            window.location.href = "/settings";
+          },
+        },
+      });
+    }
+  }
 
-  const filteredLeads = serverLeads;
+  const filteredLeads = serverLeads.filter(
+    (l) => l.name.toLowerCase().includes(searchQuery.toLowerCase()) || l.company.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  const creds = getWhatsAppCredentials();
+  const hasMetaCredentials = Boolean(creds.phoneId && creds.accessToken);
 
   return (
-    <div className="space-y-4">
-      {/* Top Bar with Omnichannel Stats & AI Autopilot Toggle */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">Realtime Omnichannel Hub</h1>
-          <p className="text-muted-foreground text-xs">
-            Sub-second synchronization across WhatsApp, Email, & Webchat with Gemini 2.0 autonomous agent
-          </p>
+    <div className="space-y-3">
+      {/* Top Bar with WhatsApp AI Autopilot Toggle & Meta Status */}
+      <div className="flex flex-wrap items-center justify-between gap-2 bg-card border border-border p-3 rounded-lg shadow-xs">
+        <div className="flex items-center gap-3">
+          <div className="h-8 w-8 rounded-full bg-[#008069] text-white flex items-center justify-center font-bold text-xs">
+            WA
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <h1 className="text-sm font-bold text-foreground">WhatsApp Omnichannel Hub</h1>
+              <span className="h-2 w-2 rounded-full bg-[#25D366] animate-pulse" />
+            </div>
+            <div className="flex items-center gap-2 mt-0.5">
+              <p className="text-[11px] text-muted-foreground">
+                Official Meta Cloud API v21.0 · Realtime Sync & AI Autopilot
+              </p>
+              <span className="text-muted-foreground text-[10px]">·</span>
+              <Link
+                to="/settings"
+                className={cn(
+                  "inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded transition",
+                  hasMetaCredentials
+                    ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/20"
+                    : "bg-amber-500/10 text-amber-600 dark:text-amber-400 hover:bg-amber-500/20"
+                )}
+              >
+                <SettingsIcon className="h-2.5 w-2.5" />
+                {hasMetaCredentials ? `Phone ID: ${creds.phoneId.slice(0, 8)}...` : "Meta API: Setup Needed"}
+              </Link>
+            </div>
+          </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex items-center gap-2">
           <button
             onClick={() => setAutoReply((v) => !v)}
             className={cn(
-              "glass flex items-center gap-2 rounded-full px-4 py-2 text-xs font-semibold transition hover:scale-105",
-              autoReply ? "border-primary/50 text-primary bg-primary/10" : "text-muted-foreground"
+              "flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold transition cursor-pointer border",
+              autoReply
+                ? "bg-[#008069]/10 text-[#008069] dark:text-[#00a884] border-[#008069]/30"
+                : "bg-muted text-muted-foreground border-border"
             )}
           >
-            <Bot className="h-4 w-4" />
-            <span>{autoReply ? "Autonomous AI: ON (≥85% Conf.)" : "Autonomous AI: OFF"}</span>
+            <Bot className="h-3.5 w-3.5" />
+            <span>{autoReply ? "AI Autopilot: ON (≥85%)" : "AI Autopilot: OFF"}</span>
           </button>
         </div>
       </div>
 
-      {/* Main 3-Column Layout */}
-      <div className="grid gap-4 lg:grid-cols-[18rem_minmax(0,1fr)_19rem]">
-        {/* Column 1: Inbox Sidebar */}
-        <GlassCard className={cn("p-3", mobilePane === "chat" && "hidden lg:block")}>
-          <div className="flex items-center justify-between px-1">
-            <SectionTitle title="Active Channels" hint={`${serverLeads.length}`} />
+      {/* Main 3-Column WhatsApp Layout */}
+      <div className="grid gap-3 lg:grid-cols-[18rem_minmax(0,1fr)_18rem] h-[calc(100vh-12rem)] min-h-[38rem]">
+        {/* Column 1: WhatsApp Chat List */}
+        <div className={cn("bg-card border border-border rounded-lg flex flex-col overflow-hidden shadow-xs", mobilePane === "chat" && "hidden lg:flex")}>
+          {/* Search Header */}
+          <div className="p-2.5 border-b border-border bg-card">
+            <div className="flex items-center gap-2 bg-muted rounded-md px-2.5 py-1.5 text-xs">
+              <Search className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+              <input
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search or start new chat"
+                className="w-full bg-transparent outline-none text-xs placeholder:text-muted-foreground"
+              />
+            </div>
           </div>
 
-          {/* Channel Filters */}
-          <div className="mt-2 flex gap-1 rounded-xl bg-background/50 p-1 text-[11px]">
-            {(["all", "whatsapp", "email", "webchat"] as const).map((ch) => (
-              <button
-                key={ch}
-                onClick={() => setActiveChannel(ch)}
-                className={cn(
-                  "flex-1 rounded-lg py-1 text-center font-medium capitalize transition",
-                  activeChannel === ch ? "bg-primary/20 text-primary font-semibold shadow-xs" : "text-muted-foreground hover:text-foreground"
-                )}
-              >
-                {ch}
-              </button>
-            ))}
-          </div>
-
-          {/* Lead Thread Items */}
-          <div className="mt-3 space-y-1.5 max-h-[38rem] overflow-y-auto pr-1">
+          {/* Chat Items */}
+          <div className="flex-1 overflow-y-auto divide-y divide-border/40">
             {filteredLeads.map((l) => {
               const thread = serverThreads.find((t) => t.id === l.id);
               const latestMsg = thread?.messages?.at(-1);
+              const isSelected = activeId === l.id;
 
               return (
                 <button
@@ -287,116 +424,108 @@ function Conversations() {
                     setSuggestedDraft(null);
                   }}
                   className={cn(
-                    "flex w-full items-center gap-3 rounded-[18px] px-3 py-2.5 text-left transition border border-transparent",
-                    activeId === l.id
-                      ? "bg-primary-soft border-primary/30 shadow-xs"
-                      : "hover:bg-muted/60"
+                    "flex w-full items-center gap-3 px-3 py-2.5 text-left transition-colors cursor-pointer",
+                    isSelected
+                      ? "bg-muted dark:bg-[#202c33]"
+                      : "hover:bg-muted/50"
                   )}
                 >
                   <div className="relative">
-                    <span className="bg-primary/15 text-primary grid h-10 w-10 shrink-0 place-items-center rounded-2xl text-xs font-bold">
+                    <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[#008069] text-white text-xs font-semibold">
                       {l.initials}
-                    </span>
-                    <span className="absolute -bottom-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-card border border-border text-[9px]">
-                      {getChannelIcon(thread?.channel || "whatsapp")}
-                    </span>
+                    </div>
                   </div>
 
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center justify-between">
-                      <span className="block truncate text-xs font-bold">{l.name}</span>
-                      <span className="text-[10px] text-muted-foreground">{l.value}</span>
+                      <span className="block truncate text-xs font-semibold text-foreground">{l.name}</span>
+                      <span className="text-[10px] text-muted-foreground">{latestMsg?.time || "10:00 AM"}</span>
                     </div>
-                    <span className="text-muted-foreground block truncate text-[11px]">
-                      {latestMsg ? latestMsg.text : "No messages yet"}
-                    </span>
+                    <div className="flex items-center justify-between mt-0.5">
+                      <span className="text-muted-foreground block truncate text-[11px] max-w-[140px]">
+                        {latestMsg ? latestMsg.text : "No messages yet"}
+                      </span>
+                      {l.status === "Unread" ? (
+                        <span className="h-2 w-2 rounded-full bg-[#25D366] shrink-0" />
+                      ) : null}
+                    </div>
                   </div>
-
-                  {l.status === "Unread" ? (
-                    <span className="bg-primary h-2 w-2 shrink-0 rounded-full" />
-                  ) : null}
                 </button>
               );
             })}
           </div>
-        </GlassCard>
+        </div>
 
-        {/* Column 2: Live Chat & Realtime Messaging */}
-        <GlassCard className={cn("flex min-h-[34rem] flex-col p-0 overflow-hidden", mobilePane === "list" && "hidden lg:flex")}>
-          {/* Header */}
-          <div className="border-border/60 flex items-center justify-between border-b px-4 py-3 bg-card/30 backdrop-blur-md">
+        {/* Column 2: Live WhatsApp Chat Window */}
+        <div className={cn("bg-card border border-border rounded-lg flex flex-col overflow-hidden shadow-xs", mobilePane === "list" && "hidden lg:flex")}>
+          {/* WhatsApp Chat Header */}
+          <div className="bg-card dark:bg-[#202c33] border-b border-border px-3.5 py-2.5 flex items-center justify-between">
             <div className="flex items-center gap-3">
               <button
                 onClick={() => setMobilePane("list")}
-                aria-label="Back to inbox"
-                className="hover:bg-muted rounded-full p-2 lg:hidden"
+                aria-label="Back to chat list"
+                className="hover:bg-muted rounded-full p-1.5 lg:hidden cursor-pointer"
               >
                 <ArrowLeft className="h-4 w-4" />
               </button>
-              <span className="bg-primary/15 text-primary grid h-10 w-10 shrink-0 place-items-center rounded-2xl text-xs font-bold">
+              <div className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[#008069] text-white text-xs font-semibold">
                 {lead.initials}
-              </span>
+              </div>
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
-                  <span className="block truncate text-sm font-semibold">{lead.name}</span>
-                  <span className="flex items-center gap-1 rounded-md bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-medium text-emerald-400">
-                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                    Online
-                  </span>
-                  {lead.phone || lead.whatsapp ? (
-                    <span className="flex items-center gap-1 text-emerald-500 font-medium bg-emerald-500/10 px-2 py-0.5 rounded-full text-[11px]">
-                      📱 {lead.phone || lead.whatsapp}
-                      <button onClick={() => { setTempPhone(lead.phone || lead.whatsapp || ""); setEditingPhone(true); }} className="ml-1 text-muted-foreground hover:text-foreground">✏️</button>
-                    </span>
-                  ) : (
-                    <button
-                      onClick={() => {
-                        const candidate = lead?.value && /^\d{7,}$/.test(lead.value.trim()) ? lead.value.trim() : "";
-                        setTempPhone(candidate);
-                        setEditingPhone(true);
-                      }}
-                      className="flex items-center gap-1 text-amber-500 font-semibold bg-amber-500/15 hover:bg-amber-500/25 px-2.5 py-0.5 rounded-full text-[11px] transition"
-                    >
-                      ⚠️ Add WhatsApp Number
-                    </button>
-                  )}
+                  <span className="block truncate text-xs font-bold text-foreground">{lead.name}</span>
                 </div>
-                <span className="text-muted-foreground block truncate text-xs">
-                  {lead.company} · Stage: <strong className="text-foreground">{lead.stage}</strong> · Score: {lead.score}/100
+                <span className="text-muted-foreground block truncate text-[11px]">
+                  {lead.company} · <span className="text-[#008069] dark:text-[#00a884] font-medium">Online</span>
                 </span>
               </div>
             </div>
 
-            {/* Inbound Simulator */}
             <div className="flex items-center gap-2">
               <button
                 onClick={() => {
-                  const queryItem = sampleLeadQueries[Math.floor(Math.random() * sampleLeadQueries.length)];
-                  handleIncomingQuery(queryItem.text, queryItem.channel);
+                  const phone = lead.phone || lead.whatsapp;
+                  if (phone) {
+                    toast.info(`Calling ${lead.name} (${phone}) via human dialer…`);
+                    window.location.href = `tel:${phone}`;
+                  } else {
+                    toast.warning("No phone number saved for this lead.");
+                  }
                 }}
-                className="glass flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold text-primary hover:bg-primary/10 transition hover:scale-105"
-                title="Simulate incoming customer query across WhatsApp / Email"
+                className="flex items-center gap-1 bg-muted hover:bg-muted/80 text-foreground border border-border rounded-md px-2.5 py-1 text-xs font-semibold transition cursor-pointer"
+                title="Normal human call flow"
               >
-                <Zap className="h-3.5 w-3.5 fill-primary text-primary" />
-                Simulate Inbound Query
+                <PhoneCall className="h-3 w-3 text-muted-foreground" />
+                <span className="hidden sm:inline">Call</span>
+              </button>
+              <button
+                onClick={() => {
+                  toast.info(`Opening Call Autopilot for ${lead.name}…`);
+                  window.location.href = "/call-autopilot";
+                }}
+                className="flex items-center gap-1 bg-[#008069] text-white hover:opacity-90 rounded-md px-2.5 py-1 text-xs font-semibold shadow-xs transition cursor-pointer"
+                title="Initiate AI Voice Call with full CRM & Buyer DNA context"
+              >
+                <PhoneCall className="h-3 w-3" />
+                <span className="hidden sm:inline">Call with AI</span>
               </button>
             </div>
           </div>
 
           {/* Quick Phone Edit Banner */}
           {editingPhone && (
-            <div className="bg-amber-500/10 border-b border-amber-500/20 px-4 py-2.5 flex flex-wrap items-center justify-between gap-2 text-xs backdrop-blur-sm animate-in fade-in slide-in-from-top-1">
-              <div className="flex items-center gap-2 flex-1 min-w-[240px]">
-                <span className="font-semibold text-amber-600 dark:text-amber-400 shrink-0">📱 WhatsApp Phone Number for {lead?.name}:</span>
+            <div className="bg-amber-500/10 border-b border-amber-500/20 px-3 py-2 flex flex-wrap items-center justify-between gap-2 text-xs">
+              <div className="flex items-center gap-2 flex-1 min-w-[200px]">
+                <span className="font-semibold text-amber-600 dark:text-amber-400 shrink-0">WhatsApp Number:</span>
                 <input
                   value={tempPhone}
                   onChange={(e) => setTempPhone(e.target.value)}
-                  placeholder="e.g. +91 98765 43210 or 67898789"
-                  className="bg-background px-3 py-1 rounded-lg border border-amber-500/40 text-xs w-60 outline-none focus:ring-2 focus:ring-amber-500"
+                  placeholder="e.g. 918778948875"
+                  className="bg-card px-2.5 py-1 rounded border border-amber-500/40 text-xs w-48 outline-none"
                   autoFocus
                 />
               </div>
-              <div className="flex items-center gap-1.5">
+              <div className="flex items-center gap-1">
                 <button
                   onClick={() => {
                     if (!tempPhone.trim()) return;
@@ -404,19 +533,19 @@ function Conversations() {
                       { id: lead.id, data: { phone: tempPhone.trim(), whatsapp: tempPhone.trim() } },
                       {
                         onSuccess: () => {
-                          toast.success(`Saved WhatsApp number for ${lead.name}`);
+                          toast.success(`Saved WhatsApp number`);
                           setEditingPhone(false);
                         },
                       }
                     );
                   }}
-                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold px-3 py-1 rounded-lg transition"
+                  className="bg-[#008069] text-white text-xs px-2.5 py-1 rounded font-medium cursor-pointer"
                 >
-                  Save Phone
+                  Save
                 </button>
                 <button
                   onClick={() => setEditingPhone(false)}
-                  className="px-2.5 py-1 text-muted-foreground hover:text-foreground rounded-lg"
+                  className="text-xs px-2 py-1 text-muted-foreground hover:text-foreground cursor-pointer"
                 >
                   Cancel
                 </button>
@@ -424,13 +553,13 @@ function Conversations() {
             </div>
           )}
 
-          {/* Messages Stream */}
-          <div className="flex-1 space-y-3.5 overflow-y-auto px-4 py-4 max-h-[26rem]">
+          {/* WhatsApp Messages Feed */}
+          <div className="flex-1 space-y-2 overflow-y-auto px-4 py-3 bg-[#efeae2] dark:bg-[#0b141a]">
             {messages.length === 0 ? (
               <div className="flex h-full flex-col items-center justify-center text-center text-muted-foreground p-6">
-                <MessageSquare className="h-8 w-8 text-primary/40 mb-2" />
-                <p className="text-xs">No conversation history yet with {lead.name}.</p>
-                <p className="text-[11px] opacity-70">Click "Simulate Inbound Query" above or type a message below.</p>
+                <MessageSquare className="h-8 w-8 text-[#008069]/40 mb-2" />
+                <p className="text-xs font-semibold text-foreground">No chat history yet with {lead.name}.</p>
+                <p className="text-[11px] text-muted-foreground mt-0.5">Click "Simulate Inbound" or send a template below.</p>
               </div>
             ) : null}
 
@@ -441,36 +570,38 @@ function Conversations() {
               return (
                 <div
                   key={m.id}
-                  className={cn("rise flex", isRep || isAi ? "justify-end" : "justify-start")}
+                  className={cn("flex", isRep || isAi ? "justify-end" : "justify-start")}
                 >
                   <div
                     className={cn(
-                      "max-w-[82%] rounded-[22px] px-4 py-2.5 text-sm leading-relaxed shadow-xs relative",
+                      "max-w-[78%] rounded-lg px-3 py-1.5 text-xs leading-relaxed shadow-xs relative",
                       isRep
-                        ? "bg-primary text-primary-foreground rounded-br-xs"
+                        ? "bg-[#d9fdd3] dark:bg-[#005c4b] text-[#111b21] dark:text-[#e9edef] rounded-tr-none"
                         : isAi
-                        ? "bg-primary/20 border border-primary/40 text-foreground rounded-br-xs"
-                        : "glass rounded-bl-xs"
+                        ? "bg-[#dcf8c6] dark:bg-[#004d3e] text-[#111b21] dark:text-[#e9edef] rounded-tr-none border border-[#00a884]/30"
+                        : "bg-white dark:bg-[#202c33] text-[#111b21] dark:text-[#e9edef] rounded-tl-none"
                     )}
                   >
                     {isAi && (
-                      <div className="flex items-center gap-1 text-[10px] text-primary font-bold mb-1">
+                      <div className="flex items-center gap-1 text-[10px] text-[#008069] dark:text-[#25D366] font-bold mb-1">
                         <Sparkles className="h-3 w-3" />
-                        Autonomous AI Reply {m.aiConfidence ? `(${m.aiConfidence}% Conf.)` : ""}
+                        AI Autopilot Reply {m.aiConfidence ? `(${m.aiConfidence}%)` : ""}
                       </div>
                     )}
                     
-                    <p className="text-xs leading-relaxed sm:text-sm">{m.text}</p>
+                    <p className="text-xs leading-relaxed">{m.text}</p>
                     
-                    <div className="mt-1 flex items-center justify-end gap-1 text-[10px] opacity-70">
+                    <div className="mt-1 flex items-center justify-end gap-1 text-[10px] text-muted-foreground dark:text-[#8696a0]">
                       <span>{m.time}</span>
                       {isRep || isAi ? (
                         m.status === "read" ? (
-                          <CheckCheck className="h-3 w-3 text-cyan-400" />
+                          <CheckCheck className="h-3.5 w-3.5 text-[#53bdeb]" />
                         ) : m.status === "delivered" ? (
-                          <CheckCheck className="h-3 w-3 opacity-60" />
+                          <CheckCheck className="h-3.5 w-3.5 text-muted-foreground" />
+                        ) : m.status === "failed" ? (
+                          <AlertTriangle className="h-3.5 w-3.5 text-rose-500" />
                         ) : (
-                          <Check className="h-3 w-3 opacity-60" />
+                          <Check className="h-3.5 w-3.5 text-muted-foreground" />
                         )
                       ) : null}
                     </div>
@@ -481,34 +612,32 @@ function Conversations() {
 
             {/* Typing status */}
             {isAiReplying ? (
-              <div className="flex justify-start rise">
-                <div className="glass rounded-[22px] rounded-bl-xs px-4 py-2 text-xs text-primary flex items-center gap-2">
-                  <Sparkles className="h-3.5 w-3.5 animate-spin" />
-                  SalesMind AI is crafting response…
+              <div className="flex justify-start">
+                <div className="bg-white dark:bg-[#202c33] rounded-lg rounded-tl-none px-3 py-1.5 text-xs text-[#008069] dark:text-[#25D366] flex items-center gap-1.5 shadow-xs">
+                  <Sparkles className="h-3 w-3 animate-spin" />
+                  AI Autopilot is typing…
                 </div>
               </div>
             ) : null}
 
             {typingUsers.length > 0 && (
-              <div className="text-[11px] text-muted-foreground italic px-2">
+              <div className="text-[11px] text-muted-foreground italic px-1">
                 {typingUsers.join(", ")} is typing…
               </div>
             )}
 
-            {/* AI Draft Suggestion Box (when confidence < threshold) */}
+            {/* AI Draft Suggestion Box */}
             {suggestedDraft && (
-              <div className="glass border border-amber-500/30 rounded-2xl p-3 space-y-2 bg-amber-500/5 rise">
-                <div className="flex items-center justify-between text-xs text-amber-400 font-semibold">
-                  <span className="flex items-center gap-1.5">
-                    <Bot className="h-4 w-4" /> AI Suggested Draft ({suggestedDraft.confidence}% Confidence)
-                  </span>
-                  <span className="text-[10px] opacity-75">Requires Rep Approval</span>
+              <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-2.5 space-y-2">
+                <div className="flex items-center justify-between text-xs text-amber-600 dark:text-amber-400 font-bold">
+                  <span>AI Draft Suggestion ({suggestedDraft.confidence}% Confidence)</span>
+                  <span className="text-[10px] uppercase">Approval Required</span>
                 </div>
-                <p className="text-xs text-foreground bg-background/60 p-2.5 rounded-xl">{suggestedDraft.text}</p>
+                <p className="text-xs text-foreground bg-card p-2 rounded border border-border">{suggestedDraft.text}</p>
                 <div className="flex gap-2">
                   <button
                     onClick={() => send(suggestedDraft.text)}
-                    className="bg-primary text-primary-foreground text-xs px-3 py-1.5 rounded-xl font-medium hover:bg-primary/90 transition"
+                    className="bg-[#008069] text-white text-xs px-3 py-1 rounded font-medium cursor-pointer"
                   >
                     Approve & Send
                   </button>
@@ -517,13 +646,13 @@ function Conversations() {
                       setDraft(suggestedDraft.text);
                       setSuggestedDraft(null);
                     }}
-                    className="glass text-xs px-3 py-1.5 rounded-xl font-medium hover:bg-muted transition"
+                    className="bg-card text-xs px-2.5 py-1 rounded border border-border hover:bg-muted cursor-pointer"
                   >
-                    Edit Draft
+                    Edit
                   </button>
                   <button
                     onClick={() => setSuggestedDraft(null)}
-                    className="text-xs text-muted-foreground px-2 py-1 hover:text-foreground"
+                    className="text-xs text-muted-foreground px-2 py-1 hover:text-foreground cursor-pointer"
                   >
                     Dismiss
                   </button>
@@ -534,27 +663,28 @@ function Conversations() {
             <div ref={chatEndRef} />
           </div>
 
-          {/* Quick Action Toolbar & Chat Input */}
-          <div className="border-border/60 space-y-3 border-t px-4 py-3 bg-card/20">
-            <div className="flex flex-wrap gap-1.5">
+          {/* WhatsApp Action Toolbar & Chat Input */}
+          <div className="bg-card dark:bg-[#202c33] border-t border-border p-2.5 space-y-2">
+            {/* Quick Action Chips */}
+            <div className="flex flex-wrap gap-1">
               {[
-                { label: "Call Lead", icon: PhoneCall, action: () => toast.success(`Calling ${lead.phone || lead.name}...`) },
-                { label: "Book Demo", icon: CalendarPlus, action: () => send(`Hi ${lead.name.split(" ")[0]}, let's lock in a demo. Here's my calendar link: https://cal.com/salesmind/${lead.name.toLowerCase().replace(/\s+/g, "-")}`) },
-                { label: "Send Quote", icon: FileText, action: () => send(`Hi ${lead.name.split(" ")[0]}, attached is your customized proposal of ${lead.value}.`) },
-                { label: "Send SOC2 Paper", icon: ShieldCheck, action: () => send(`Attached is our latest SOC2 Type II compliance audit and security whitepaper.`) },
+                { label: "WhatsApp Template", icon: Zap, action: handleSendTemplate },
+                { label: "Book Demo", icon: CalendarPlus, action: () => send(`Hi ${lead.name.split(" ")[0]}, let's schedule a demo: https://cal.com/salesmind`) },
+                { label: "Send Quote", icon: FileText, action: () => send(`Hi ${lead.name.split(" ")[0]}, attached is your proposal of ${lead.value}.`) },
+                { label: "SOC2 Compliance", icon: ShieldCheck, action: () => send(`Here is our SOC2 Type II compliance audit report.`) },
               ].map((q) => (
-                <Island
+                <button
                   key={q.label}
-                  variant="glass"
-                  className="px-2.5 py-1.5 text-xs hover:scale-105 transition"
-                  icon={<q.icon className="h-3 w-3" />}
                   onClick={q.action}
+                  className="flex items-center gap-1 rounded bg-muted/80 hover:bg-muted px-2 py-1 text-[11px] font-medium text-foreground transition cursor-pointer"
                 >
-                  {q.label}
-                </Island>
+                  <q.icon className="h-3 w-3 text-[#008069] dark:text-[#00a884]" />
+                  <span>{q.label}</span>
+                </button>
               ))}
             </div>
 
+            {/* Input Bar */}
             <form
               className="flex items-center gap-2"
               onSubmit={(e) => {
@@ -568,84 +698,93 @@ function Conversations() {
                   setDraft(e.target.value);
                   sendTyping(e.target.value.length > 0);
                 }}
-                placeholder={`Reply to ${lead.name} on WhatsApp...`}
-                className="bg-background/80 focus:ring-primary/40 h-11 min-w-0 flex-1 rounded-[18px] px-4 text-xs sm:text-sm outline-none focus:ring-2 border border-border/60"
+                placeholder="Type a message..."
+                className="bg-muted dark:bg-[#2a3942] focus:ring-1 focus:ring-[#00a884] h-9 min-w-0 flex-1 rounded-md px-3 text-xs outline-none border border-border/50 text-foreground placeholder:text-muted-foreground"
               />
-              <Island type="submit" aria-label="Send message" className="px-4 py-3">
-                <Send className="h-4 w-4" />
-              </Island>
+              <button
+                type="submit"
+                aria-label="Send message"
+                className="bg-[#008069] dark:bg-[#00a884] hover:opacity-90 text-white rounded-full p-2.5 transition cursor-pointer shadow-xs shrink-0"
+              >
+                <Send className="h-3.5 w-3.5" />
+              </button>
             </form>
           </div>
-        </GlassCard>
+        </div>
 
-        {/* Column 3: Live Buyer DNA Intelligence & Dynamic Playbook */}
-        <GlassCard className={cn("space-y-4 overflow-y-auto max-h-[38rem]", mobilePane === "list" && "hidden lg:block")}>
-          <div>
-            <div className="flex items-center justify-between">
-              <SectionTitle title="Live Buyer DNA" />
-              <span className="text-[10px] font-bold text-primary bg-primary/10 px-2 py-0.5 rounded-full">
+        {/* Column 3: WhatsApp CRM & Buyer DNA Panel */}
+        <div className={cn("bg-card border border-border rounded-lg p-3.5 flex flex-col justify-between overflow-y-auto shadow-xs", mobilePane === "list" && "hidden lg:flex")}>
+          <div className="space-y-4">
+            {/* Header */}
+            <div className="flex items-center justify-between pb-2 border-b border-border">
+              <div className="flex items-center gap-1.5">
+                <Activity className="h-3.5 w-3.5 text-[#008069] dark:text-[#00a884]" />
+                <h2 className="text-xs font-bold text-foreground uppercase tracking-wider">Buyer DNA</h2>
+              </div>
+              <span className="text-[10px] font-bold text-[#008069] dark:text-[#00a884] bg-[#008069]/10 px-2 py-0.5 rounded">
                 Score: {lead.score}/100
               </span>
             </div>
             
-            <div className="mt-3 grid grid-cols-3 gap-2">
-              <Ring size={56} label="Intent" value={lead.dna.intent} />
-              <Ring size={56} label="Trust" value={lead.dna.trust} />
-              <Ring size={56} label="Urgency" value={lead.dna.urgency} />
+            {/* DNA Rings */}
+            <div className="grid grid-cols-3 gap-2">
+              <Ring size={52} label="Intent" value={lead.dna.intent} />
+              <Ring size={52} label="Trust" value={lead.dna.trust} />
+              <Ring size={52} label="Urgency" value={lead.dna.urgency} />
             </div>
 
-            <div className="mt-3 grid grid-cols-2 gap-2 text-[11px]">
-              <div className="glass rounded-xl p-2">
-                <span className="text-muted-foreground block text-[9px]">Budget Level</span>
-                <strong className="text-foreground">{lead.dna.budget}%</strong>
+            {/* Key Metrics */}
+            <div className="grid grid-cols-2 gap-2 text-xs">
+              <div className="bg-muted/60 p-2 rounded border border-border">
+                <span className="text-muted-foreground block text-[10px] font-medium">Budget Tier</span>
+                <strong className="text-foreground text-xs">{lead.dna.budget}%</strong>
               </div>
-              <div className="glass rounded-xl p-2">
-                <span className="text-muted-foreground block text-[9px]">Price Sensitivity</span>
-                <strong className="text-foreground">{lead.dna.priceSensitivity}%</strong>
+              <div className="bg-muted/60 p-2 rounded border border-border">
+                <span className="text-muted-foreground block text-[10px] font-medium">Price Sensitivity</span>
+                <strong className="text-foreground text-xs">{lead.dna.priceSensitivity}%</strong>
               </div>
             </div>
-          </div>
 
-          {/* Psychology Profile */}
-          <div className="space-y-1.5 text-xs">
-            <div className="glass rounded-[14px] px-3 py-2">
-              <span className="text-[10px] text-muted-foreground block">Communication Language</span>
-              <span className="font-medium text-foreground">{lead.dna.language}</span>
+            {/* Profile Info */}
+            <div className="space-y-1.5 text-xs">
+              <div className="bg-muted/60 px-2.5 py-1.5 rounded border border-border">
+                <span className="text-[10px] text-muted-foreground block">Communication Style</span>
+                <span className="font-medium text-foreground">{lead.dna.language}</span>
+              </div>
+              <div className="bg-muted/60 px-2.5 py-1.5 rounded border border-border">
+                <span className="text-[10px] text-muted-foreground block">Decision Style</span>
+                <span className="font-medium text-foreground">{lead.dna.style}</span>
+              </div>
             </div>
-            <div className="glass rounded-[14px] px-3 py-2">
-              <span className="text-[10px] text-muted-foreground block">Decision Maker Style</span>
-              <span className="font-medium text-foreground">{lead.dna.style}</span>
-            </div>
-          </div>
 
-          {/* AI Recommended Replies */}
-          <div>
-            <SectionTitle title="Instant Battlecards" />
-            <div className="mt-2 space-y-1.5">
-              {[
-                `Hi ${lead.name.split(" ")[0]}, we can lock in the ₹${lead.value} tier if finalized this week.`,
-                "Would a 10-minute walkthrough with our Solutions Architect help?",
-                "We provide full data migration and dedicated onboarding support.",
-              ].map((s) => (
-                <button
-                  key={s}
-                  onClick={() => send(s)}
-                  className="glass w-full rounded-[14px] px-3 py-2 text-left text-xs transition hover:scale-[1.02] hover:border-primary/40 text-muted-foreground hover:text-foreground"
-                >
-                  "{s}"
-                </button>
-              ))}
+            {/* Instant Battlecards */}
+            <div>
+              <span className="text-[10px] uppercase font-bold text-muted-foreground block mb-1.5">Instant Battlecards</span>
+              <div className="space-y-1">
+                {[
+                  `Hi ${lead.name.split(" ")[0]}, we can lock in the ₹${lead.value} tier this week.`,
+                  "Would a 10-minute walkthrough with our team help?",
+                ].map((s) => (
+                  <button
+                    key={s}
+                    onClick={() => send(s)}
+                    className="w-full text-left text-[11px] p-1.5 rounded bg-muted/60 hover:bg-muted border border-border text-foreground transition cursor-pointer"
+                  >
+                    "{s}"
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
 
           {/* Next Best Action */}
-          <div className="bg-primary/10 border border-primary/20 rounded-[18px] p-3 text-xs">
-            <span className="text-primary font-bold flex items-center gap-1.5">
-              <Sparkles className="h-3.5 w-3.5" /> Next Best Sales Action
+          <div className="bg-[#008069]/10 dark:bg-[#00a884]/15 border border-[#008069]/30 rounded p-2.5 text-xs mt-3">
+            <span className="text-[#008069] dark:text-[#00a884] font-bold block text-[11px]">
+              Next Best Action
             </span>
-            <p className="mt-1 font-medium text-foreground">{lead.nextAction}</p>
+            <p className="mt-0.5 text-foreground text-[11px]">{lead.nextAction}</p>
           </div>
-        </GlassCard>
+        </div>
       </div>
     </div>
   );

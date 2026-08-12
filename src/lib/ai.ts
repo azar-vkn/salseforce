@@ -125,7 +125,7 @@ function generateSmartFallback(prompt: string, ctx: CrmContext): string {
   }
 
   if (lower.includes("pitch") || lower.includes("tier") || lower.includes("price")) {
-    return `💡 **Premium Pitch Strategy**\n\n1. **Highlight Automation & ROI**: SalesMind AI reduces admin tasks by 70% and boosts deal closing rate by 34%.\n2. **Focus on Buyer DNA**: Tailor key metrics to lead's buying style (e.g. data-driven ROI for Aarav Mehta, visual UX for Priya Sharma).\n3. **Offer Guarantee**: 30-day performance benchmark guarantee to ease price sensitivity.`;
+    return `💡 **Premium Pitch Strategy**\n\n1. **Highlight Automation & ROI**: SalesMind AI reduces admin tasks by 70% and boosts deal closing rate by 34%.\n2. **Focus on Buyer DNA**: Tailor key metrics to lead's buying style (e.g. data-driven ROI for Asirvatha, direct architecture walkthrough for Azar).\n3. **Offer Guarantee**: 30-day performance benchmark guarantee to ease price sensitivity.`;
   }
 
   return `🤖 **SalesMind AI Insight**\n\nBased on your live CRM context:\n• You have **${ctx.leads.length} leads** in your pipeline.\n• Top recommendation: Complete today's task **"${ctx.tasks[0]?.title || "Follow up with leads"}"**.\n\nHow else can I assist you with closing your deals today?`;

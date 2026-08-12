@@ -1,253 +1,87 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
-import { type Lead, type Task, type ConversationThread, type AiAgentRule } from "@/lib/types";
+import { type Lead, type Task, type ConversationThread, type AiAgentRule, type CallRecord, type CallAutopilotSettings } from "@/lib/types";
 import { broadcastDemoEvent } from "./use-realtime";
 
 // ── Initial Seed Data ──────────────────────────────────────────────
-export const INITIAL_LEADS: Lead[] = [
-  {
-    id: "lead-1",
-    name: "Aarav Mehta",
-    company: "TechCorp India",
-    initials: "AM",
-    score: 92,
-    stage: "Negotiation",
-    nextAction: "Finalize SLA contract terms",
-    emotion: "Excited",
-    status: "Replied",
-    value: "₹8.5L",
-    phone: "+91 98765 12345",
-    whatsapp: "+91 98765 12345",
-    email: "aarav@techcorp.in",
-    dna: {
-      budget: 85,
-      intent: 92,
-      trust: 88,
-      priceSensitivity: 35,
-      urgency: 90,
-      language: "English · Professional & direct",
-      style: "Data-driven, values ROI metrics",
-      confidence: 94,
-    },
-  },
-  {
-    id: "lead-2",
-    name: "Priya Sharma",
-    company: "InnoVision Labs",
-    initials: "PS",
-    score: 84,
-    stage: "Proposal",
-    nextAction: "Send customized demo deck",
-    emotion: "Curious",
-    status: "Unread",
-    value: "₹5.2L",
-    phone: "+91 98123 45678",
-    whatsapp: "+91 98123 45678",
-    email: "priya@innovision.com",
-    dna: {
-      budget: 70,
-      intent: 80,
-      trust: 75,
-      priceSensitivity: 50,
-      urgency: 75,
-      language: "English · Friendly tone",
-      style: "Visual learner, interested in UX demo",
-      confidence: 82,
-    },
-  },
-  {
-    id: "lead-3",
-    name: "Vikram Patel",
-    company: "Nexus Solutions",
-    initials: "VP",
-    score: 78,
-    stage: "Qualified",
-    nextAction: "Schedule technical review call",
-    emotion: "Excited",
-    status: "Replied",
-    value: "₹3.8L",
-    phone: "+91 97654 32109",
-    whatsapp: "+91 97654 32109",
-    email: "vikram@nexus.co",
-    dna: {
-      budget: 65,
-      intent: 75,
-      trust: 80,
-      priceSensitivity: 40,
-      urgency: 65,
-      language: "English / Hindi · Consultative",
-      style: "Security & compliance focused",
-      confidence: 78,
-    },
-  },
-  {
-    id: "lead-4",
-    name: "Neha Gupta",
-    company: "Apex Global Systems",
-    initials: "NG",
-    score: 65,
-    stage: "New",
-    nextAction: "Initial discovery call",
-    emotion: "Neutral",
-    status: "Waiting",
-    value: "₹12.0L",
-    phone: "+91 96543 21098",
-    whatsapp: "+91 96543 21098",
-    email: "neha@apexglobal.com",
-    dna: {
-      budget: 95,
-      intent: 60,
-      trust: 50,
-      priceSensitivity: 60,
-      urgency: 45,
-      language: "English · Formal",
-      style: "Enterprise procurement process",
-      confidence: 65,
-    },
-  },
-  {
-    id: "lead-5",
-    name: "Rohan Verma",
-    company: "Zenith Enterprises",
-    initials: "RV",
-    score: 95,
-    stage: "Won",
-    nextAction: "Onboarding kickoff call",
-    emotion: "Excited",
-    status: "Replied",
-    value: "₹6.5L",
-    phone: "+91 95432 10987",
-    whatsapp: "+91 95432 10987",
-    email: "rohan@zenith.org",
-    dna: {
-      budget: 90,
-      intent: 98,
-      trust: 95,
-      priceSensitivity: 20,
-      urgency: 95,
-      language: "English · Partner focused",
-      style: "Speed of execution priority",
-      confidence: 98,
-    },
-  },
-  {
-    id: "lead-6",
-    name: "Sneha Kapoor",
-    company: "Pulse Media",
-    initials: "SK",
-    score: 58,
-    stage: "New",
-    nextAction: "Send product brochure & case studies",
-    emotion: "Hesitant",
-    status: "Unread",
-    value: "₹2.4L",
-    phone: "+91 94321 09876",
-    whatsapp: "+91 94321 09876",
-    email: "sneha@pulsemedia.in",
-    dna: {
-      budget: 40,
-      intent: 50,
-      trust: 45,
-      priceSensitivity: 80,
-      urgency: 35,
-      language: "English · Casual",
-      style: "Cost-sensitive growth startup",
-      confidence: 55,
-    },
-  },
-];
+export const INITIAL_LEADS: Lead[] = [];
 
-export const INITIAL_TASKS: Task[] = [
-  {
-    id: "task-1",
-    title: "Call Aarav Mehta regarding contract terms",
-    lead: "Aarav Mehta",
-    tag: "Call",
-    column: "today",
-  },
-  {
-    id: "task-2",
-    title: "Send revised proposal to Priya Sharma",
-    lead: "Priya Sharma",
-    tag: "Meeting",
-    column: "today",
-  },
-  {
-    id: "task-3",
-    title: "Technical sync with Vikram Patel",
-    lead: "Vikram Patel",
-    tag: "Demo",
-    column: "tomorrow",
-  },
-  {
-    id: "task-4",
-    title: "Discovery call with Neha Gupta",
-    lead: "Neha Gupta",
-    tag: "Call",
-    column: "upcoming",
-  },
-  {
-    id: "task-5",
-    title: "Send welcome onboarding kit",
-    lead: "Rohan Verma",
-    tag: "Email",
-    column: "completed",
-  },
-];
+export const INITIAL_TASKS: Task[] = [];
 
-export const INITIAL_CONVERSATIONS: ConversationThread[] = [
-  {
-    id: "lead-1",
-    messages: [
-      { id: "m1", from: "them", text: "Hi! Can you send over the updated SLA draft?", time: "10:15 AM" },
-      { id: "m2", from: "me", text: "Sure Aarav, I'm reviewing the final clauses with legal right now.", time: "10:20 AM" },
-      { id: "m3", from: "them", text: "Great! If everything looks good, we can sign by Thursday.", time: "10:28 AM" },
-    ],
-  },
-  {
-    id: "lead-2",
-    messages: [
-      { id: "m4", from: "them", text: "Thanks for the intro call. Could you send the pricing tier details?", time: "Yesterday" },
-      { id: "m5", from: "me", text: "Hi Priya! Absolutely, sending over our proposal document now.", time: "Yesterday" },
-    ],
-  },
-  {
-    id: "lead-3",
-    messages: [
-      { id: "m6", from: "them", text: "Our security team asked about SOC2 compliance.", time: "2 days ago" },
-      { id: "m7", from: "me", text: "Hi Vikram! Yes, we are fully SOC2 Type II certified. I can share our report.", time: "2 days ago" },
-    ],
-  },
-  {
-    id: "lead-4",
-    messages: [
-      { id: "m8", from: "them", text: "Hello! We are looking to upgrade our sales stack for 50 reps.", time: "3 days ago" },
-    ],
-  },
-  {
-    id: "lead-5",
-    messages: [
-      { id: "m9", from: "them", text: "Payment went through! Excited to get started.", time: "4 days ago" },
-      { id: "m10", from: "me", text: "Welcome aboard Rohan! Setting up your workspace now.", time: "4 days ago" },
-    ],
-  },
-  {
-    id: "lead-6",
-    messages: [
-      { id: "m11", from: "them", text: "Do you have a free tier or starter trial?", time: "5 days ago" },
-    ],
-  },
-];
+export const INITIAL_CONVERSATIONS: ConversationThread[] = [];
+
+export const INITIAL_AI_RULES: AiAgentRule = {
+  autoReplyEnabled: true,
+  minConfidenceThreshold: 85,
+  systemPrompt: "You are SalesMind AI, an elite enterprise sales executive. Answer customer questions clearly, warmly, and concisely. Keep responses under 3 sentences and focus on driving value.",
+  tone: "Professional, warm, value-oriented",
+  prohibitedTopics: ["unauthorized discounts", "competitor slander", "internal operational details"],
+  knowledgeBase: "SalesMind AI is a real-time autonomous CRM with AI lead scoring, Buyer DNA analysis, and omnichannel WhatsApp/Email messaging.",
+};
+
+// ── Lead Sanitizers for Supabase PostgreSQL Schema ─────────────────
+function sanitizeLeadForSupabase(lead: Partial<Lead>) {
+  const { phone, whatsapp, email, dna, createdAt, updatedAt, ...rest } = lead as any;
+  const existingDna = typeof dna === "object" && dna !== null ? dna : {};
+  
+  return {
+    ...rest,
+    ...(phone || whatsapp || email || dna ? {
+      dna: {
+        ...existingDna,
+        ...(phone !== undefined ? { phone } : {}),
+        ...(whatsapp !== undefined ? { whatsapp } : {}),
+        ...(email !== undefined ? { email } : {}),
+      }
+    } : {}),
+  };
+}
+
+function parseLeadFromSupabase(dbLead: any): Lead {
+  const dna = dbLead.dna || {};
+  const phone = dbLead.phone || dna.phone || (/^\+?\d{8,}$/.test((dbLead.value || "").trim()) ? dbLead.value.trim() : undefined);
+  const whatsapp = dbLead.whatsapp || dna.whatsapp || phone;
+  const email = dbLead.email || dna.email;
+
+  const rawValue = (dbLead.value || "").trim();
+  const valueIsPhone = /^\+?\d{7,}$/.test(rawValue);
+  const value = valueIsPhone || !rawValue ? "₹0" : rawValue;
+
+  return {
+    id: dbLead.id,
+    name: dbLead.name || "Unnamed Lead",
+    company: dbLead.company || "Company",
+    initials: dbLead.initials || (dbLead.name ? dbLead.name.slice(0, 2).toUpperCase() : "LD"),
+    score: Number(dbLead.score) || 50,
+    stage: dbLead.stage || "New",
+    nextAction: dbLead.nextAction || "Follow up",
+    emotion: dbLead.emotion || "Neutral",
+    status: dbLead.status || "Unread",
+    value,
+    phone,
+    whatsapp,
+    email,
+    dna: {
+      budget: dna.budget ?? 70,
+      intent: dna.intent ?? 75,
+      trust: dna.trust ?? 70,
+      priceSensitivity: dna.priceSensitivity ?? 50,
+      urgency: dna.urgency ?? 70,
+      language: dna.language ?? "English",
+      style: dna.style ?? "Direct",
+      confidence: dna.confidence ?? 80,
+    },
+  };
+}
 
 // ── Local Storage Helper Functions ─────────────────────────────────
 function getLocalCache<T>(key: string, seed: T[]): T[] {
   try {
     const raw = localStorage.getItem(`salesmind-${key}`);
-    if (raw) {
+    if (raw !== null) {
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      if (Array.isArray(parsed)) return parsed;
     }
-    // Seed initial data if cache empty
     localStorage.setItem(`salesmind-${key}`, JSON.stringify(seed));
     return seed;
   } catch {
@@ -276,8 +110,6 @@ async function fetchTableWithFallback<T extends { id: string }>(
     try {
       const { data, error } = await supabase.from(tableName).select(selectQuery);
       if (!error && data) {
-        // If Supabase has data (or even if it's explicitly empty), it should be the source of truth.
-        // We overwrite the local cache with Supabase data to prevent mock seeds from reappearing.
         const mappedData = mapper ? data.map(mapper) : (data as T[]);
         setLocalCache(tableName, mappedData);
         return mappedData;
@@ -303,28 +135,38 @@ export const INITIAL_AI_RULES: AiAgentRule = {
 export function useLeads() {
   return useQuery({
     queryKey: ["leads"],
-    queryFn: () => fetchTableWithFallback<Lead>(
-      "leads", 
-      INITIAL_LEADS, 
-      "*, buyer_dna(*)",
-      (row) => {
-        const dnaRow = Array.isArray(row.buyer_dna) ? row.buyer_dna[0] : row.buyer_dna;
-        return {
-          ...row,
-          nextAction: row.next_action || "Initial outreach",
-          dna: dnaRow ? {
-            budget: dnaRow.budget ?? 50,
-            intent: dnaRow.intent ?? 50,
-            trust: dnaRow.trust ?? 50,
-            priceSensitivity: dnaRow.price_sensitivity ?? 50,
-            urgency: dnaRow.urgency ?? 50,
-            language: dnaRow.language || "English",
-            style: dnaRow.style || "Professional",
-            confidence: dnaRow.confidence ?? 60,
-          } : INITIAL_LEADS[0].dna
-        };
+    queryFn: async (): Promise<Lead[]> => {
+      if (isSupabaseConfigured) {
+        try {
+          const { data, error } = await supabase.from("leads").select("*, buyer_dna(*)");
+          if (!error && data && data.length > 0) {
+            const parsedLeads = data.map((row: any) => {
+              const base = parseLeadFromSupabase(row);
+              const dnaRow = Array.isArray(row.buyer_dna) ? row.buyer_dna[0] : row.buyer_dna;
+              if (dnaRow) {
+                base.dna = {
+                  budget: dnaRow.budget ?? base.dna.budget,
+                  intent: dnaRow.intent ?? base.dna.intent,
+                  trust: dnaRow.trust ?? base.dna.trust,
+                  priceSensitivity: dnaRow.price_sensitivity ?? base.dna.priceSensitivity,
+                  urgency: dnaRow.urgency ?? base.dna.urgency,
+                  language: dnaRow.language || base.dna.language,
+                  style: dnaRow.style || base.dna.style,
+                  confidence: dnaRow.confidence ?? base.dna.confidence,
+                };
+              }
+              return base;
+            });
+            setLocalCache("leads", parsedLeads);
+            return parsedLeads;
+          }
+        } catch (e) {
+          console.warn("Supabase fetch leads error:", e);
+        }
       }
-    ),
+      return getLocalCache<Lead>("leads", INITIAL_LEADS);
+    },
+    refetchInterval: 1000,
   });
 }
 
@@ -332,54 +174,66 @@ export function useCreateLead() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (lead: Omit<Lead, "id">) => {
-      const newId = crypto.randomUUID();
+      const id = crypto.randomUUID();
       const newLead: Lead = {
         ...lead,
-        id: newId,
+        id,
         initials: lead.initials || lead.name.slice(0, 2).toUpperCase(),
+        value: lead.value || "₹0",
       };
       
-      // Update local cache first
+      // Update local cache & React Query state immediately
       const current = getLocalCache<Lead>("leads", INITIAL_LEADS);
       const updated = [newLead, ...current];
       setLocalCache("leads", updated);
+      queryClient.setQueryData(["leads"], updated);
 
-      // Attempt Supabase insert if configured
-      if (isSupabaseConfigured) {
-        try {
-          const { dna, nextAction, ...rest } = newLead;
-          await supabase.from("leads").insert({
-            ...rest,
-            id: newId,
-            next_action: nextAction
-          });
-          
-          if (dna) {
-            await supabase.from("buyer_dna").update({
-              budget: dna.budget,
-              intent: dna.intent,
-              trust: dna.trust,
-              price_sensitivity: dna.priceSensitivity,
-              urgency: dna.urgency,
-              language: dna.language,
-              style: dna.style,
-              confidence: dna.confidence
-            }).eq("lead_id", newId);
-          }
-        } catch {
-          // Ignore fallback
-        }
-      }
-
-      // Initialize empty conversation thread for new lead
       const currentConvs = getLocalCache<ConversationThread>("conversations", INITIAL_CONVERSATIONS);
       const updatedConvs = [{ id: newLead.id, messages: [] }, ...currentConvs];
       setLocalCache("conversations", updatedConvs);
+      queryClient.setQueryData(["conversations"], updatedConvs);
 
-      // Broadcast event for live cross-tab demo sync
+      // Async background Supabase sync
+      if (isSupabaseConfigured) {
+        try {
+          const payload = sanitizeLeadForSupabase(newLead);
+          await supabase.from("leads").insert({ ...payload, id });
+          await supabase.from("conversations").upsert({ id: newLead.id, lead_id: newLead.id, messages: [] });
+          if (newLead.dna) {
+            await supabase.from("buyer_dna").insert({
+              lead_id: id,
+              budget: newLead.dna.budget,
+              intent: newLead.dna.intent,
+              trust: newLead.dna.trust,
+              price_sensitivity: newLead.dna.priceSensitivity,
+              urgency: newLead.dna.urgency,
+              language: newLead.dna.language,
+              style: newLead.dna.style,
+              confidence: newLead.dna.confidence
+            }).catch(() => {});
+          }
+        } catch (e) {
+          console.error("Supabase create lead error:", e);
+        }
+      }
+      const currentConvs = getLocalCache<ConversationThread>("conversations", INITIAL_CONVERSATIONS);
+      const updatedConvs = [{ id: newLead.id, messages: [] }, ...currentConvs];
+      setLocalCache("conversations", updatedConvs);
+      queryClient.setQueryData(["conversations"], updatedConvs);
+
+      // Async background Supabase sync
+      if (isSupabaseConfigured) {
+        try {
+          const payload = sanitizeLeadForSupabase(newLead);
+          await supabase.from("leads").insert(payload);
+          await supabase.from("conversations").upsert({ id: newLead.id, messages: [] });
+        } catch (e) {
+          console.error("Supabase create lead error:", e);
+        }
+      }
+
       broadcastDemoEvent("SYNC_LEADS");
       broadcastDemoEvent("SYNC_CONVERSATIONS");
-
       return newLead;
     },
     onSuccess: () => {
@@ -393,57 +247,44 @@ export function useUpdateLead() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async ({ id, data }: { id: string; data: Partial<Lead> }) => {
-      // 1. Update local cache immediately
       const current = getLocalCache<Lead>("leads", INITIAL_LEADS);
-      const updated = current.map((l) => {
-        if (l.id === id) {
-          const merged = { ...l, ...data };
-          if (data.dna) {
-            const dna = data.dna;
-            merged.score = Math.round(
-              dna.intent * 0.4 + dna.budget * 0.3 + dna.urgency * 0.2 + dna.trust * 0.1
-            );
-          }
-          return merged;
-        }
-        return l;
-      });
-      setLocalCache("leads", updated);
+      const existing = current.find((l) => l.id === id) || INITIAL_LEADS[0];
+      const mergedLead: Lead = { ...existing, ...data };
+      
+      if (data.dna) {
+        const dna = data.dna;
+        mergedLead.score = Math.round(
+          dna.intent * 0.4 + dna.budget * 0.3 + dna.urgency * 0.2 + dna.trust * 0.1
+        );
+      }
 
-      // 2. Attempt Supabase update if configured
+      const updated = current.map((l) => (l.id === id ? mergedLead : l));
+      setLocalCache("leads", updated);
+      queryClient.setQueryData(["leads"], updated);
+
       if (isSupabaseConfigured) {
         try {
-          const dbData: any = { ...data };
-          if (dbData.nextAction !== undefined) {
-            dbData.next_action = dbData.nextAction;
-            delete dbData.nextAction;
-          }
-          const { dna, ...leadsData } = dbData;
-          
-          if (Object.keys(leadsData).length > 0) {
-            const { error } = await supabase.from("leads").update(leadsData).eq("id", id);
-            if (error) console.warn("Supabase lead update error:", error.message);
-          }
-          
-          if (dna) {
-             await supabase.from("buyer_dna").update({
-               budget: dna.budget,
-               intent: dna.intent,
-               trust: dna.trust,
-               price_sensitivity: dna.priceSensitivity,
-               urgency: dna.urgency,
-               language: dna.language,
-               style: dna.style,
-               confidence: dna.confidence
-             }).eq("lead_id", id);
+          const payload = sanitizeLeadForSupabase(mergedLead);
+          await supabase.from("leads").upsert({ ...payload, id });
+          if (data.dna) {
+            await supabase.from("buyer_dna").update({
+              budget: data.dna.budget,
+              intent: data.dna.intent,
+              trust: data.dna.trust,
+              price_sensitivity: data.dna.priceSensitivity,
+              urgency: data.dna.urgency,
+              language: data.dna.language,
+              style: data.dna.style,
+              confidence: data.dna.confidence
+            }).eq("lead_id", id).catch(() => {});
           }
         } catch (e) {
-          console.warn("Supabase lead update exception:", e);
+          console.error("Supabase update lead error:", e);
         }
       }
 
       broadcastDemoEvent("SYNC_LEADS");
-      return updated.find((l) => l.id === id);
+      return mergedLead;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["leads"] });
@@ -451,23 +292,32 @@ export function useUpdateLead() {
   });
 }
 
-
 export function useDeleteLead() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (id: string) => {
-      // Attempt Supabase delete
-      try {
-        await supabase.from("leads").delete().eq("id", id);
-      } catch {
-        // Ignore fallback
-      }
-
-      // Update local cache
+      // Immediate local state update for zero lag
       const current = getLocalCache<Lead>("leads", INITIAL_LEADS);
       const updated = current.filter((l) => l.id !== id);
       setLocalCache("leads", updated);
+      queryClient.setQueryData(["leads"], updated);
+
+      const currentConvs = getLocalCache<ConversationThread>("conversations", INITIAL_CONVERSATIONS);
+      const updatedConvs = currentConvs.filter((c) => c.id !== id);
+      setLocalCache("conversations", updatedConvs);
+      queryClient.setQueryData(["conversations"], updatedConvs);
+
+      if (isSupabaseConfigured) {
+        try {
+          await supabase.from("leads").delete().eq("id", id);
+          await supabase.from("conversations").delete().eq("id", id);
+        } catch (e) {
+          console.error("Supabase delete lead error:", e);
+        }
+      }
+
       broadcastDemoEvent("SYNC_LEADS");
+      broadcastDemoEvent("SYNC_CONVERSATIONS");
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["leads"] });
@@ -480,7 +330,20 @@ export function useDeleteLead() {
 export function useTasks() {
   return useQuery({
     queryKey: ["tasks"],
-    queryFn: () => fetchTableWithFallback<Task>("tasks", INITIAL_TASKS),
+    queryFn: async (): Promise<Task[]> => {
+      if (isSupabaseConfigured) {
+        try {
+          const { data, error } = await supabase.from("tasks").select("*");
+          if (!error && data && data.length > 0) {
+            setLocalCache("tasks", data as Task[]);
+            return data as Task[];
+          }
+        } catch {
+          // fallback
+        }
+      }
+      return getLocalCache<Task>("tasks", INITIAL_TASKS);
+    },
   });
 }
 
@@ -488,19 +351,21 @@ export function useCreateTask() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (task: Omit<Task, "id">) => {
-      const newTask: Task = { ...task, id: `task-${Date.now()}` };
+      const newTask: Task = { ...task, id: crypto.randomUUID() };
       
-      try {
-        await supabase.from("tasks").insert(newTask);
-      } catch {
-        // Ignore
-      }
-
       const current = getLocalCache<Task>("tasks", INITIAL_TASKS);
       const updated = [newTask, ...current];
       setLocalCache("tasks", updated);
-      broadcastDemoEvent("SYNC_TASKS");
 
+      if (isSupabaseConfigured) {
+        try {
+          await supabase.from("tasks").insert(newTask);
+        } catch (e) {
+          console.error("Supabase create task error:", e);
+        }
+      }
+
+      broadcastDemoEvent("SYNC_TASKS");
       return newTask;
     },
     onSuccess: () => {
@@ -513,15 +378,18 @@ export function useUpdateTask() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async ({ id, data }: { id: string; data: Partial<Task> }) => {
-      try {
-        await supabase.from("tasks").update(data).eq("id", id);
-      } catch {
-        // Ignore
-      }
-
       const current = getLocalCache<Task>("tasks", INITIAL_TASKS);
       const updated = current.map((t) => (t.id === id ? { ...t, ...data } : t));
       setLocalCache("tasks", updated);
+
+      if (isSupabaseConfigured) {
+        try {
+          await supabase.from("tasks").update(data).eq("id", id);
+        } catch (e) {
+          console.error("Supabase update task error:", e);
+        }
+      }
+
       broadcastDemoEvent("SYNC_TASKS");
     },
     onSuccess: () => {
@@ -534,15 +402,18 @@ export function useDeleteTask() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (id: string) => {
-      try {
-        await supabase.from("tasks").delete().eq("id", id);
-      } catch {
-        // Ignore
-      }
-
       const current = getLocalCache<Task>("tasks", INITIAL_TASKS);
       const updated = current.filter((t) => t.id !== id);
       setLocalCache("tasks", updated);
+
+      if (isSupabaseConfigured) {
+        try {
+          await supabase.from("tasks").delete().eq("id", id);
+        } catch (e) {
+          console.error("Supabase delete task error:", e);
+        }
+      }
+
       broadcastDemoEvent("SYNC_TASKS");
     },
     onSuccess: () => {
@@ -555,34 +426,41 @@ export function useDeleteTask() {
 export function useConversations() {
   return useQuery({
     queryKey: ["conversations"],
-    queryFn: async () => {
+    queryFn: async (): Promise<ConversationThread[]> => {
       const local = getLocalCache<ConversationThread>("conversations", INITIAL_CONVERSATIONS);
       if (!isSupabaseConfigured) return local;
 
       try {
         const { data, error } = await supabase.from("conversations").select("*, messages(*)");
-        if (!error && data) {
-           const result: ConversationThread[] = data.map(conv => {
+        if (!error && data && data.length > 0) {
+           const result: ConversationThread[] = data.map((conv: any) => {
               const msgs = Array.isArray(conv.messages) ? conv.messages : [];
               return {
-                id: conv.lead_id, // Map lead_id to frontend thread id
-                messages: msgs.sort((a,b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()).map(msg => ({
-                   id: msg.id,
-                   from: msg.from_type as any,
-                   text: msg.text,
-                   time: new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-                   channel: msg.channel as any,
-                   status: msg.status as any,
-                   aiConfidence: msg.ai_confidence
+                id: conv.lead_id || conv.id,
+                messages: msgs.sort((a: any, b: any) => new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime()).map((msg: any) => ({
+                   id: msg.id || crypto.randomUUID(),
+                   from: msg.from_type || msg.from,
+                   text: msg.text || msg.content || "",
+                   time: msg.created_at ? new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : (msg.time || "Just now"),
+                   channel: msg.channel || "whatsapp",
+                   status: msg.status || "sent",
+                   aiConfidence: msg.ai_confidence ?? msg.aiConfidence
                 }))
               };
            });
            setLocalCache("conversations", result);
            return result;
+        } else {
+           const { data: dbConversations } = await supabase.from("conversations").select("*");
+           if (dbConversations && dbConversations.length > 0 && Array.isArray(dbConversations[0].messages)) {
+             setLocalCache("conversations", dbConversations as ConversationThread[]);
+             return dbConversations as ConversationThread[];
+           }
         }
       } catch {}
       return local;
     },
+    refetchInterval: 1000,
   });
 }
 
@@ -599,10 +477,16 @@ export function useAddMessage() {
         updated.push({ id: leadId, messages: [message] });
       }
       setLocalCache("conversations", updated);
+      queryClient.setQueryData(["conversations"], updated);
 
       if (isSupabaseConfigured) {
         try {
-          const { data: convData } = await supabase.from("conversations").select("id").eq("lead_id", leadId).single();
+          const thread = updated.find((c) => c.id === leadId);
+          if (thread) {
+            await supabase.from("conversations").upsert({ id: leadId, lead_id: leadId, messages: thread.messages });
+          }
+
+          const { data: convData } = await supabase.from("conversations").select("id").eq("lead_id", leadId).maybeSingle();
           if (convData) {
             await supabase.from("messages").insert({
               id: message.id,
@@ -613,11 +497,41 @@ export function useAddMessage() {
               channel: message.channel || 'whatsapp',
               status: message.status || 'sent',
               ai_confidence: message.aiConfidence
-            });
+            }).catch(() => {});
           }
         } catch (e) {
            console.error("Failed to insert message", e);
         }
+      }
+      broadcastDemoEvent("SYNC_CONVERSATIONS");
+      return updated.find((c) => c.id === leadId);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["conversations"] });
+    },
+  });
+}
+
+export function useUpdateConversation() {
+  const addMessage = useAddMessage();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: Partial<ConversationThread> }) => {
+      const current = getLocalCache<ConversationThread>("conversations", INITIAL_CONVERSATIONS);
+      const existing = current.find((c) => c.id === id);
+      let updated: ConversationThread[];
+      if (existing) {
+        updated = current.map((c) => (c.id === id ? { ...c, ...data } : c));
+      } else {
+        updated = [...current, { id, messages: data.messages ?? [] }];
+      }
+      setLocalCache("conversations", updated);
+      queryClient.setQueryData(["conversations"], updated);
+
+      if (isSupabaseConfigured) {
+        try {
+          await supabase.from("conversations").upsert({ id, lead_id: id, messages: data.messages });
+        } catch {}
       }
       broadcastDemoEvent("SYNC_CONVERSATIONS");
     },
@@ -632,14 +546,16 @@ export function useAiRules() {
   return useQuery({
     queryKey: ["ai_rules"],
     queryFn: async (): Promise<AiAgentRule> => {
-      try {
-        const { data, error } = await supabase.from("ai_agent_rules").select("*").single();
-        if (!error && data) {
-          localStorage.setItem("salesmind-ai_rules", JSON.stringify(data));
-          return data as AiAgentRule;
+      if (isSupabaseConfigured) {
+        try {
+          const { data, error } = await supabase.from("ai_agent_rules").select("*").single();
+          if (!error && data) {
+            localStorage.setItem("salesmind-ai_rules", JSON.stringify(data));
+            return data as AiAgentRule;
+          }
+        } catch {
+          // fallback
         }
-      } catch {
-        // fallback
       }
 
       try {
@@ -657,10 +573,12 @@ export function useUpdateAiRules() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (newRules: Partial<AiAgentRule>) => {
-      try {
-        await supabase.from("ai_agent_rules").upsert(newRules);
-      } catch {
-        // fallback
+      if (isSupabaseConfigured) {
+        try {
+          await supabase.from("ai_agent_rules").upsert(newRules);
+        } catch {
+          // fallback
+        }
       }
 
       const current = JSON.parse(localStorage.getItem("salesmind-ai_rules") || JSON.stringify(INITIAL_AI_RULES));
@@ -674,4 +592,187 @@ export function useUpdateAiRules() {
   });
 }
 
+export function useClearAllLeads() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async () => {
+      setLocalCache("leads", []);
+      setLocalCache("conversations", []);
+      setLocalCache("tasks", []);
+      if (isSupabaseConfigured) {
+        try {
+          await supabase.from("leads").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+          await supabase.from("conversations").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+          await supabase.from("tasks").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+        } catch (e) {
+          console.error("Supabase clear error:", e);
+        }
+      }
+      broadcastDemoEvent("SYNC_LEADS");
+      broadcastDemoEvent("SYNC_CONVERSATIONS");
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["leads"] });
+      queryClient.invalidateQueries({ queryKey: ["conversations"] });
+      queryClient.invalidateQueries({ queryKey: ["tasks"] });
+    },
+  });
+}
 
+// ── Call Autopilot Hooks ───────────────────────────────────────────
+export const DEFAULT_CALL_SETTINGS: CallAutopilotSettings = {
+  enabled: true,
+  incomingEnabled: true,
+  identifyCustomers: true,
+  loadBuyerDna: true,
+  loadActiveDeals: true,
+  askQualification: true,
+  updateBuyerDna: true,
+  generateSummary: true,
+  createFollowUp: true,
+  outboundEnabled: true,
+  dealFollowUp: true,
+  dealConfirmation: true,
+  leadQualification: true,
+  appointmentConfirmation: true,
+  usePreviousConversations: true,
+  useBuyerDna: true,
+  useDealInformation: true,
+  detectObjections: true,
+  detectPurchaseIntent: true,
+  detectRequirements: true,
+  recommendNextAction: true,
+  transferOnCustomerRequest: true,
+  transferOnLowConfidence: true,
+  minConfidenceThreshold: 75,
+  transferOnComplexNegotiation: true,
+  transferOnFrustration: true,
+  storeTranscript: true,
+  storeSummary: true,
+  storeAnalysis: true,
+  storeRecordingMetadata: true,
+  aiDisclosure: true,
+  callRecordingNotice: true,
+  recordingEnabled: true,
+  retentionDays: 30,
+  provider: "mock",
+};
+
+export function useCallSettings() {
+  return useQuery({
+    queryKey: ["call_settings"],
+    queryFn: async (): Promise<CallAutopilotSettings> => {
+      if (isSupabaseConfigured) {
+        try {
+          const { data, error } = await supabase.from("call_settings").select("*").single();
+          if (!error && data) {
+            localStorage.setItem("salesmind-call_settings", JSON.stringify(data));
+            return data as CallAutopilotSettings;
+          }
+        } catch {
+          // fallback
+        }
+      }
+
+      try {
+        const raw = localStorage.getItem("salesmind-call_settings");
+        if (raw) return JSON.parse(raw);
+      } catch {
+        // fallback
+      }
+      return DEFAULT_CALL_SETTINGS;
+    },
+  });
+}
+
+export function useUpdateCallSettings() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (newSettings: Partial<CallAutopilotSettings>) => {
+      const current = JSON.parse(localStorage.getItem("salesmind-call_settings") || JSON.stringify(DEFAULT_CALL_SETTINGS));
+      const updated: CallAutopilotSettings = { ...current, ...newSettings };
+      localStorage.setItem("salesmind-call_settings", JSON.stringify(updated));
+      queryClient.setQueryData(["call_settings"], updated);
+
+      if (isSupabaseConfigured) {
+        try {
+          await supabase.from("call_settings").upsert(updated);
+        } catch {
+          // fallback
+        }
+      }
+
+      return updated;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["call_settings"] });
+    },
+  });
+}
+
+export function useCalls() {
+  return useQuery({
+    queryKey: ["calls"],
+    queryFn: async (): Promise<CallRecord[]> => {
+      if (isSupabaseConfigured) {
+        try {
+          const { data, error } = await supabase.from("calls").select("*").order("createdAt", { ascending: false });
+          if (!error && data) {
+            setLocalCache("calls", data as CallRecord[]);
+            return data as CallRecord[];
+          }
+        } catch {
+          // fallback
+        }
+      }
+      return getLocalCache<CallRecord>("calls", []);
+    },
+  });
+}
+
+export function useAddCallRecord() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (record: CallRecord) => {
+      const current = getLocalCache<CallRecord>("calls", []);
+      const updated = [record, ...current.filter((c) => c.id !== record.id)];
+      setLocalCache("calls", updated);
+      queryClient.setQueryData(["calls"], updated);
+
+      if (isSupabaseConfigured) {
+        try {
+          await supabase.from("calls").upsert(record);
+        } catch (e) {
+          console.error("Supabase call insert error:", e);
+        }
+      }
+
+      broadcastDemoEvent("SYNC_CALLS");
+      return record;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["calls"] });
+    },
+  });
+}
+
+export function useClearCalls() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async () => {
+      setLocalCache("calls", []);
+      queryClient.setQueryData(["calls"], []);
+      if (isSupabaseConfigured) {
+        try {
+          await supabase.from("calls").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+        } catch (e) {
+          console.error("Supabase clear calls error:", e);
+        }
+      }
+      broadcastDemoEvent("SYNC_CALLS");
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["calls"] });
+    },
+  });
+}

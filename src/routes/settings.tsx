@@ -3,9 +3,10 @@ import { useState } from "react";
 import { GlassCard, Island, SectionTitle } from "@/components/glass";
 import { isSupabaseConfigured } from "@/lib/supabase";
 import { useAiRules, useUpdateAiRules } from "@/hooks/use-supabase";
+import { inspectWhatsAppAccount, sendWhatsAppTextMessage, type WhatsAppInspectionResult } from "@/lib/whatsapp";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { Database, Key, Webhook, Bot, Shield, CheckCircle2, Copy, Send, Loader2 } from "lucide-react";
+import { Database, Key, Webhook, Bot, Shield, CheckCircle2, Copy, Send, Loader2, AlertCircle, HelpCircle } from "lucide-react";
 
 export const Route = createFileRoute("/settings")({
   head: () => ({
@@ -112,6 +113,9 @@ function SettingsPage() {
   const [webhookVerifyToken, setWebhookVerifyToken] = useLocalStorage("salesmind-webhook-verify-token", "salesmind_verify_token_2026");
 
   const [testingConnection, setTestingConnection] = useState(false);
+  const [inspectionResult, setInspectionResult] = useState<WhatsAppInspectionResult | null>(null);
+  const [testRecipientPhone, setTestRecipientPhone] = useState("");
+  const [sendingTestMessage, setSendingTestMessage] = useState(false);
 
   const { data: aiRules } = useAiRules();
   const updateAiRulesMutation = useUpdateAiRules();
@@ -123,25 +127,56 @@ function SettingsPage() {
   };
 
   const testWhatsAppConnection = async () => {
-    if (!whatsappToken || !whatsappPhoneId) {
-      toast.error("Please enter both WhatsApp Access Token and Phone Number ID first.");
+    if (!whatsappToken) {
+      toast.error("Please enter a WhatsApp Access Token first.");
       return;
     }
     setTestingConnection(true);
     try {
-      const res = await fetch(`https://graph.facebook.com/v19.0/${whatsappPhoneId}`, {
-        headers: { Authorization: `Bearer ${whatsappToken}` },
-      });
-      const data = await res.json();
-      if (res.ok && data.id) {
-        toast.success(`Connected to Meta WhatsApp Cloud API! Number: ${data.display_phone_number || data.verified_name || "Verified"}`);
-      } else {
-        toast.error(`Meta API Error: ${data.error?.message || "Invalid credentials"}`);
+      const result = await inspectWhatsAppAccount(whatsappPhoneId, whatsappToken, whatsappWabaId);
+      setInspectionResult(result);
+
+      if (result.isValid && result.phoneDetails) {
+        toast.success(
+          `Connected! Sender Phone: ${result.phoneDetails.displayPhoneNumber || result.phoneDetails.id} (${result.phoneDetails.verifiedName || "Verified"})`
+        );
+      } else if (result.isWabaIdInstead) {
+        toast.warning(
+          `Detected WhatsApp Business Account ID instead of Phone Number ID! Found ${result.discoveredPhoneNumbers?.length || 0} phone numbers.`
+        );
+      } else if (result.isTokenExpired) {
+        toast.error("Meta WhatsApp Access Token has expired. Please provide a fresh token.");
+      } else if (result.error) {
+        toast.error(result.diagnosticAdvice || result.error);
       }
     } catch {
-      toast.error("Could not reach Meta Graph API. Please verify network/token.");
+      toast.error("Could not reach Meta Graph API. Please verify your internet connection.");
     } finally {
       setTestingConnection(false);
+    }
+  };
+
+  const sendTestWhatsAppMessage = async () => {
+    if (!testRecipientPhone.trim()) {
+      toast.warning("Please enter a recipient phone number with country code (e.g. 919876543210).");
+      return;
+    }
+    setSendingTestMessage(true);
+    try {
+      const res = await sendWhatsAppTextMessage({
+        to: testRecipientPhone.trim(),
+        body: "🧪 Test message from SalesMind AI WhatsApp Hub! Your Meta Cloud API integration is successfully active.",
+        phoneId: whatsappPhoneId,
+        accessToken: whatsappToken,
+      });
+
+      if (res.success) {
+        toast.success(`🎉 Test WhatsApp message dispatched to +${testRecipientPhone.replace(/\D/g, "")}!`);
+      } else {
+        toast.error(res.error || "Failed to deliver test message");
+      }
+    } finally {
+      setSendingTestMessage(false);
     }
   };
 
@@ -196,46 +231,149 @@ function SettingsPage() {
               <SectionTitle title="Meta WhatsApp Cloud API Setup" />
               <Webhook className="h-4 w-4 text-emerald-400" />
             </div>
-            <p className="text-[11px] text-muted-foreground">
+            <p className="text-[11px] text-muted-foreground leading-relaxed">
               Enter your credentials from <strong className="text-foreground">developers.facebook.com → WhatsApp → API Setup</strong> to send live WhatsApp messages.
             </p>
+
+            {/* Diagnostic Alert Banner */}
+            {inspectionResult && (
+              <div className={cn(
+                "rounded-xl p-3 text-xs border space-y-2",
+                inspectionResult.isValid && inspectionResult.phoneDetails
+                  ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-300"
+                  : inspectionResult.isWabaIdInstead
+                  ? "bg-amber-500/10 border-amber-500/30 text-amber-300"
+                  : "bg-rose-500/10 border-rose-500/30 text-rose-300"
+              )}>
+                <div className="flex items-start gap-2">
+                  {inspectionResult.isValid && inspectionResult.phoneDetails ? (
+                    <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0 mt-0.5" />
+                  ) : (
+                    <AlertCircle className="h-4 w-4 text-amber-400 shrink-0 mt-0.5" />
+                  )}
+                  <div className="space-y-1">
+                    <span className="font-semibold block">
+                      {inspectionResult.isValid && inspectionResult.phoneDetails
+                        ? `Meta Cloud API Connected (${inspectionResult.phoneDetails.displayPhoneNumber || "Active"})`
+                        : inspectionResult.isWabaIdInstead
+                        ? "WABA ID Detected Instead of Phone Number ID"
+                        : inspectionResult.isTokenExpired
+                        ? "Access Token Expired"
+                        : "Configuration Issue"}
+                    </span>
+                    <p className="text-[11px] leading-relaxed opacity-90">
+                      {inspectionResult.diagnosticAdvice || inspectionResult.error}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Discovered Phone Numbers List */}
+                {inspectionResult.discoveredPhoneNumbers && inspectionResult.discoveredPhoneNumbers.length > 0 && (
+                  <div className="mt-2 space-y-1.5 pt-2 border-t border-amber-500/20">
+                    <span className="text-[10px] font-bold text-amber-200 block uppercase tracking-wide">
+                      Available Phone Numbers Under this WABA:
+                    </span>
+                    {inspectionResult.discoveredPhoneNumbers.map((pn) => (
+                      <div
+                        key={pn.id}
+                        className="flex flex-wrap items-center justify-between gap-2 bg-background/50 p-2 rounded-lg border border-amber-500/30"
+                      >
+                        <div className="text-[11px]">
+                          <strong className="text-foreground">+{pn.displayPhoneNumber}</strong>
+                          <span className="text-muted-foreground ml-1.5">({pn.verifiedName || "Phone Node"})</span>
+                          <span className="block text-[10px] font-mono text-muted-foreground">ID: {pn.id}</span>
+                        </div>
+                        <button
+                          onClick={() => {
+                            setWhatsappWabaId(whatsappPhoneId); // save previous as WABA
+                            setWhatsappPhoneId(pn.id); // set real phone ID
+                            toast.success(`Selected Phone Number ID: ${pn.id}`);
+                            testWhatsAppConnection();
+                          }}
+                          className="bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-semibold px-2.5 py-1 rounded transition cursor-pointer"
+                        >
+                          Use this Phone ID
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
 
             <div className="space-y-2.5">
               <Field
                 label="WhatsApp System User Access Token"
                 value={whatsappToken}
                 onChange={setWhatsappToken}
-                placeholder="EAA..."
+                placeholder="EAATHf..."
                 type="password"
               />
               <Field
-                label="Phone Number ID"
+                label="Phone Number ID (Step 1 'Phone number ID' in Meta API Setup)"
                 value={whatsappPhoneId}
                 onChange={setWhatsappPhoneId}
-                placeholder="e.g. 109283746501928"
+                placeholder="e.g. 615852441616853"
               />
               <Field
                 label="WhatsApp Business Account ID (WABA ID)"
                 value={whatsappWabaId}
                 onChange={setWhatsappWabaId}
-                placeholder="e.g. 987654321098765"
+                placeholder="e.g. 1276074385581968"
               />
+
+              {/* Helpful ID Distinction Note */}
+              <div className="bg-muted/40 rounded-xl p-2.5 border border-border/50 text-[11px] text-muted-foreground space-y-1">
+                <div className="flex items-center gap-1 font-semibold text-foreground text-[11px]">
+                  <HelpCircle className="h-3 w-3 text-primary" />
+                  <span>Important: Phone Number ID vs. WABA ID</span>
+                </div>
+                <p>
+                  • <strong>Phone Number ID</strong>: The specific 15-digit numerical ID for the sender phone number. Required for sending messages.
+                </p>
+                <p>
+                  • <strong>WABA ID</strong>: The business container ID. If you enter this as the Phone Number ID, Meta returns <em>"Unsupported post request / Object ID does not exist"</em>.
+                </p>
+              </div>
 
               <div className="flex flex-wrap gap-2 pt-1">
                 <button
                   onClick={() => toast.success("WhatsApp credentials saved to your workspace session.")}
-                  className="bg-primary text-primary-foreground text-xs px-3.5 py-2 rounded-xl font-semibold hover:bg-primary/90 transition"
+                  className="bg-primary text-primary-foreground text-xs px-3.5 py-2 rounded-xl font-semibold hover:bg-primary/90 transition cursor-pointer"
                 >
                   Save Credentials
                 </button>
                 <button
                   onClick={testWhatsAppConnection}
                   disabled={testingConnection}
-                  className="glass text-xs px-3.5 py-2 rounded-xl font-semibold hover:bg-muted transition flex items-center gap-1.5"
+                  className="glass text-xs px-3.5 py-2 rounded-xl font-semibold hover:bg-muted transition flex items-center gap-1.5 cursor-pointer"
                 >
                   {testingConnection ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5 text-primary" />}
                   Test API Connection
                 </button>
+              </div>
+
+              {/* Direct Test Message Sender */}
+              <div className="border-t border-border/50 pt-2.5 space-y-2">
+                <span className="text-[11px] font-semibold text-foreground block">
+                  Send Test Outbound Message:
+                </span>
+                <div className="flex gap-2">
+                  <input
+                    value={testRecipientPhone}
+                    onChange={(e) => setTestRecipientPhone(e.target.value)}
+                    placeholder="Recipient phone (e.g. 918778948875)"
+                    className="bg-background/60 text-xs px-3 py-1.5 rounded-xl border border-border/60 flex-1 outline-none focus:ring-1 focus:ring-primary"
+                  />
+                  <button
+                    onClick={sendTestWhatsAppMessage}
+                    disabled={sendingTestMessage}
+                    className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs px-3 py-1.5 rounded-xl font-medium flex items-center gap-1 transition cursor-pointer shrink-0"
+                  >
+                    {sendingTestMessage ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
+                    Send Test
+                  </button>
+                </div>
               </div>
             </div>
           </GlassCard>

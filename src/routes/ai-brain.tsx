@@ -12,7 +12,7 @@ const CHAT_STORAGE_KEY = "salesmind-ai-brain-messages";
 const aiSuggestions: string[] = [
   "Summarize my open deals and pipeline value",
   "Which leads are hot and ready to close today?",
-  "Draft a high-converting follow-up for Aarav Mehta",
+  "Draft a high-converting follow-up for Asirvatha Arul Selvin",
   "Provide a battlecard to handle annual pricing objections",
   "Analyze buyer intent trends across qualified deals",
 ];

@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AiBrainRouteImport } from './routes/ai-brain'
 import { Route as AnalyticsRouteImport } from './routes/analytics'
+import { Route as CallAutopilotRouteImport } from './routes/call-autopilot'
 import { Route as ConversationsRouteImport } from './routes/conversations'
 import { Route as LeadsRouteImport } from './routes/leads'
 import { Route as SettingsRouteImport } from './routes/settings'
@@ -30,6 +31,11 @@ const AiBrainRoute = AiBrainRouteImport.update({
 const AnalyticsRoute = AnalyticsRouteImport.update({
   id: '/analytics',
   path: '/analytics',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CallAutopilotRoute = CallAutopilotRouteImport.update({
+  id: '/call-autopilot',
+  path: '/call-autopilot',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ConversationsRoute = ConversationsRouteImport.update({
@@ -57,6 +63,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/ai-brain': typeof AiBrainRoute
   '/analytics': typeof AnalyticsRoute
+  '/call-autopilot': typeof CallAutopilotRoute
   '/conversations': typeof ConversationsRoute
   '/leads': typeof LeadsRoute
   '/settings': typeof SettingsRoute
@@ -66,6 +73,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/ai-brain': typeof AiBrainRoute
   '/analytics': typeof AnalyticsRoute
+  '/call-autopilot': typeof CallAutopilotRoute
   '/conversations': typeof ConversationsRoute
   '/leads': typeof LeadsRoute
   '/settings': typeof SettingsRoute
@@ -76,6 +84,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/ai-brain': typeof AiBrainRoute
   '/analytics': typeof AnalyticsRoute
+  '/call-autopilot': typeof CallAutopilotRoute
   '/conversations': typeof ConversationsRoute
   '/leads': typeof LeadsRoute
   '/settings': typeof SettingsRoute
@@ -87,6 +96,7 @@ export interface FileRouteTypes {
     | '/'
     | '/ai-brain'
     | '/analytics'
+    | '/call-autopilot'
     | '/conversations'
     | '/leads'
     | '/settings'
@@ -96,6 +106,7 @@ export interface FileRouteTypes {
     | '/'
     | '/ai-brain'
     | '/analytics'
+    | '/call-autopilot'
     | '/conversations'
     | '/leads'
     | '/settings'
@@ -105,6 +116,7 @@ export interface FileRouteTypes {
     | '/'
     | '/ai-brain'
     | '/analytics'
+    | '/call-autopilot'
     | '/conversations'
     | '/leads'
     | '/settings'
@@ -115,6 +127,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AiBrainRoute: typeof AiBrainRoute
   AnalyticsRoute: typeof AnalyticsRoute
+  CallAutopilotRoute: typeof CallAutopilotRoute
   ConversationsRoute: typeof ConversationsRoute
   LeadsRoute: typeof LeadsRoute
   SettingsRoute: typeof SettingsRoute
@@ -142,6 +155,13 @@ declare module '@tanstack/react-router' {
       path: '/analytics'
       fullPath: '/analytics'
       preLoaderRoute: typeof AnalyticsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/call-autopilot': {
+      id: '/call-autopilot'
+      path: '/call-autopilot'
+      fullPath: '/call-autopilot'
+      preLoaderRoute: typeof CallAutopilotRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/conversations': {
@@ -179,6 +199,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AiBrainRoute: AiBrainRoute,
   AnalyticsRoute: AnalyticsRoute,
+  CallAutopilotRoute: CallAutopilotRoute,
   ConversationsRoute: ConversationsRoute,
   LeadsRoute: LeadsRoute,
   SettingsRoute: SettingsRoute,

@@ -31,16 +31,17 @@ export function useRealtimeSync() {
             }
           }
         )
-        // Listen to Message changes
+        // Listen to Conversation & Message changes
         .on(
           "postgres_changes",
-          { event: "*", schema: "public", table: "messages" },
+          { event: "*", schema: "public", table: "conversations" },
           (payload) => {
             queryClient.invalidateQueries({ queryKey: ["conversations"] });
-            if (payload.eventType === "INSERT") {
-              const newMsg = payload.new as { text?: string; from_type?: string };
-              if (newMsg.from_type === "them") {
-                toast.info(`💬 Incoming query: "${(newMsg.text || "").slice(0, 40)}..."`);
+            if (payload.new && (payload.new as any).messages) {
+              const msgs = (payload.new as any).messages;
+              const lastMsg = msgs[msgs.length - 1];
+              if (lastMsg && (lastMsg.from === "them" || lastMsg.from_type === "them")) {
+                toast.info(`💬 Incoming WhatsApp: "${(lastMsg.text || "").slice(0, 40)}..."`);
               }
             }
           }
@@ -51,14 +52,6 @@ export function useRealtimeSync() {
           { event: "*", schema: "public", table: "tasks" },
           () => {
             queryClient.invalidateQueries({ queryKey: ["tasks"] });
-          }
-        )
-        // Listen to Buyer DNA changes
-        .on(
-          "postgres_changes",
-          { event: "*", schema: "public", table: "buyer_dna" },
-          () => {
-            queryClient.invalidateQueries({ queryKey: ["leads"] });
           }
         )
         .subscribe();
@@ -81,6 +74,8 @@ export function useRealtimeSync() {
           }
         } else if (type === "SYNC_TASKS") {
           queryClient.invalidateQueries({ queryKey: ["tasks"] });
+        } else if (type === "SYNC_CALLS") {
+          queryClient.invalidateQueries({ queryKey: ["calls"] });
         }
       };
 
@@ -93,7 +88,7 @@ export function useRealtimeSync() {
 }
 
 // Utility to broadcast demo changes cross-tab
-export function broadcastDemoEvent(type: "SYNC_LEADS" | "SYNC_CONVERSATIONS" | "SYNC_TASKS", payload?: Record<string, unknown>) {
+export function broadcastDemoEvent(type: "SYNC_LEADS" | "SYNC_CONVERSATIONS" | "SYNC_TASKS" | "SYNC_CALLS", payload?: Record<string, unknown>) {
   if (demoBroadcastChannel) {
     try {
       demoBroadcastChannel.postMessage({ type, payload });

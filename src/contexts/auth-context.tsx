@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
-import { Session } from "@supabase/supabase-js";
+import { Session, User } from "@supabase/supabase-js";
 
 const DEMO_SESSION_KEY = "salesmind-demo-session";
 
@@ -27,6 +27,7 @@ export const MOCK_DEMO_SESSION: Session = {
 
 type AuthContextType = {
   session: Session | null;
+  user: User | null;
   isLoading: boolean;
   isDemo: boolean;
   loginAsDemo: () => void;
@@ -35,6 +36,7 @@ type AuthContextType = {
 
 const AuthContext = createContext<AuthContextType>({
   session: null,
+  user: null,
   isLoading: true,
   isDemo: false,
   loginAsDemo: () => {},
@@ -104,8 +106,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const user = session?.user ?? null;
+
   return (
-    <AuthContext.Provider value={{ session, isLoading, isDemo, loginAsDemo, logout }}>
+    <AuthContext.Provider value={{ session, user, isLoading, isDemo, loginAsDemo, logout }}>
       {children}
     </AuthContext.Provider>
   );

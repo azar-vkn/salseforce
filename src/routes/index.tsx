@@ -3,16 +3,16 @@ import { useState, useEffect } from "react";
 import {
   Flame,
   IndianRupee,
-  MessageSquareDot,
+  MessageSquare,
   TrendingUp,
-  CalendarDays,
   Sparkles,
   Plus,
   Megaphone,
   PhoneCall,
+  ArrowRight,
 } from "lucide-react";
 import { GlassCard, Island, SectionTitle } from "@/components/glass";
-import { useLeads, useTasks } from "@/hooks/use-supabase";
+import { useLeads, useTasks, useCalls, useCallSettings } from "@/hooks/use-supabase";
 import { toast } from "sonner";
 import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis } from "recharts";
 
@@ -20,11 +20,11 @@ export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
       { title: "Dashboard — SalesMind AI" },
-      { name: "description", content: "Your daily AI briefing: hot leads, revenue and next actions." },
+      { name: "description", content: "Your daily WhatsApp sales briefing: hot leads, revenue and next actions." },
       { property: "og:title", content: "Dashboard — SalesMind AI" },
       {
         property: "og:description",
-        content: "Your daily AI briefing: hot leads, revenue and next actions.",
+        content: "Your daily WhatsApp sales briefing: hot leads, revenue and next actions.",
       },
     ],
   }),
@@ -32,13 +32,14 @@ export const Route = createFileRoute("/")({
 });
 
 function Dashboard() {
-  const { data: serverLeads = [], isLoading: loadingLeads, error } = useLeads();
+  const { data: serverLeads = [], isLoading: loadingLeads } = useLeads();
   const { data: serverTasks = [], isLoading: loadingTasks } = useTasks();
+  const { data: serverCalls = [] } = useCalls();
+  const { data: callSettings } = useCallSettings();
   
   const hot = serverLeads.filter((l) => l.score > 75).slice(0, 3);
   const wonLeads = serverLeads.filter(l => l.stage === "Won");
   
-  // Basic parsing for string values like "₹5L", "₹50k"
   const parseValue = (valStr: string) => {
     const num = parseFloat(valStr.replace(/[^0-9.]/g, ''));
     if (isNaN(num)) return 0;
@@ -57,11 +58,16 @@ function Dashboard() {
   const todayTasks = serverTasks.filter(t => t.column === "today");
   const followUps = serverTasks.filter(t => t.tag.toLowerCase().includes("follow")).length;
 
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const callsToday = serverCalls.filter(c => c.createdAt.slice(0, 10) === todayStr).length;
+  const dealsDiscussed = new Set(serverCalls.map(c => c.leadId)).size;
+  const followUpsCreated = serverCalls.filter(c => c.analysis?.recommendedNextAction).length;
+
   const stats = [
-    { label: "Revenue this month", value: totalWon > 0 ? formatLakhs(totalWon) : "₹0", delta: "+12%", icon: IndianRupee },
-    { label: "Hot leads", value: serverLeads.filter(l => l.score > 75).length.toString(), delta: "+2", icon: Flame },
-    { label: "Pending replies", value: pendingReplies.toString(), delta: "-1", icon: MessageSquareDot },
-    { label: "Conversions", value: wonLeads.length.toString(), delta: "+5%", icon: TrendingUp },
+    { label: "Won Revenue", value: totalWon > 0 ? formatLakhs(totalWon) : "₹0", delta: "+12%", icon: IndianRupee },
+    { label: "Hot Leads", value: serverLeads.filter(l => l.score > 75).length.toString(), delta: "+2 new", icon: Flame },
+    { label: "Unread Chats", value: pendingReplies.toString(), delta: "Realtime", icon: MessageSquare },
+    { label: "Call Autopilot", value: callSettings?.enabled ? "● Active" : "○ Disabled", delta: `${serverCalls.length} AI Calls (${callsToday} today)`, icon: PhoneCall },
   ];
 
   const revenueSeries = [
@@ -70,7 +76,7 @@ function Dashboard() {
     { month: "Mar", revenue: 2.8 },
     { month: "Apr", revenue: 4.2 },
     { month: "May", revenue: 3.9 },
-    { month: "Jun", revenue: totalWon > 0 ? totalWon / 100000 : 4.5 }, // Current month mock
+    { month: "Jun", revenue: totalWon > 0 ? totalWon / 100000 : 4.5 },
   ];
   
   const [now, setNow] = useState(new Date());
@@ -81,171 +87,208 @@ function Dashboard() {
   }, []);
 
   if (loadingLeads || loadingTasks) {
-    return <div className="p-8 text-center text-muted-foreground">Loading dashboard...</div>;
+    return (
+      <div className="flex h-96 items-center justify-center">
+        <div className="flex items-center gap-2.5 rounded-lg bg-card border border-border px-4 py-3 shadow-xs">
+          <div className="h-4 w-4 rounded-full border-2 border-[#008069] border-t-transparent animate-spin" />
+          <span className="text-xs font-medium text-foreground">Loading dashboard...</span>
+        </div>
+      </div>
+    );
   }
 
   return (
-    <div className="space-y-5">
-      <header className="rise">
-        <p className="text-muted-foreground text-sm">
-          {now.toLocaleDateString("en-US", { weekday: "long", day: "numeric", month: "long" })}
-        </p>
-        <h1 className="mt-1 text-3xl font-bold tracking-tight sm:text-4xl">
-          {now.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" })}
-        </h1>
+    <div className="space-y-4">
+      {/* Header */}
+      <header className="flex flex-wrap items-center justify-between gap-3 bg-card border border-border p-3.5 rounded-lg shadow-xs">
+        <div>
+          <p className="text-[11px] text-muted-foreground">
+            {now.toLocaleDateString("en-US", { weekday: "long", day: "numeric", month: "long" })}
+          </p>
+          <h1 className="text-xl font-bold tracking-tight text-foreground sm:text-2xl mt-0.5">
+            {now.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" })}
+          </h1>
+        </div>
+        <div className="flex items-center gap-2">
+          <Link
+            to="/conversations"
+            className="bg-[#008069] dark:bg-[#00a884] text-white hover:opacity-90 flex items-center gap-1.5 px-3.5 py-1.5 rounded text-xs font-semibold shadow-xs transition"
+          >
+            <MessageSquare className="h-3.5 w-3.5" />
+            <span>Open WhatsApp Inbox</span>
+          </Link>
+        </div>
       </header>
 
-      <GlassCard delay={40} className="from-primary/18 to-accent/10 bg-gradient-to-br">
-        <div className="mb-3 flex items-center gap-2 text-sm font-semibold">
-          <Sparkles className="text-primary h-4 w-4" /> AI Summary
+      {/* AI Summary Banner */}
+      <div className="bg-[#008069]/10 dark:bg-[#00a884]/15 border border-[#008069]/30 rounded-lg p-4 space-y-2.5">
+        <div className="flex items-center gap-2 text-xs font-bold text-[#008069] dark:text-[#25D366]">
+          <Sparkles className="h-4 w-4" />
+          <span>AI Daily Executive Briefing</span>
         </div>
-        <p className="text-lg leading-relaxed font-medium sm:text-xl">
-          Today you have <span className="text-primary">{hot.length} hot leads</span>,{" "}
-          <span className="text-primary">{todayTasks.filter(t => t.tag.toLowerCase().includes('meet')).length} meetings</span> and{" "}
-          <span className="text-primary">{followUps} follow-ups</span>. Expected revenue{" "}
-          <span className="text-primary">{formatLakhs(totalExpected)}</span>.
+        <p className="text-sm leading-relaxed text-foreground font-medium">
+          You have <strong className="text-[#008069] dark:text-[#25D366]">{hot.length} high-intent leads</strong> active on WhatsApp,{" "}
+          <strong>{todayTasks.filter(t => t.tag.toLowerCase().includes('meet')).length} scheduled calls</strong> and{" "}
+          <strong>{followUps} follow-ups</strong>. Expected pipeline value:{" "}
+          <strong className="text-[#008069] dark:text-[#25D366]">{formatLakhs(totalExpected)}</strong>.
         </p>
-        <div className="mt-4 flex flex-wrap gap-2">
-          <Island icon={<Plus className="h-4 w-4" />} onClick={() => toast.success("Lead form opened")}>
-            Add Lead
-          </Island>
-          <Island
-            variant="glass"
-            icon={<Megaphone className="h-4 w-4" />}
-            onClick={() => toast("Campaign draft ready")}
-          >
-            New Campaign
-          </Island>
-          <Island
-            variant="glass"
-            icon={<PhoneCall className="h-4 w-4" />}
-            onClick={() => toast("Calling Aarav Mehta…")}
-          >
-            Call Lead
-          </Island>
-        </div>
-      </GlassCard>
+      </div>
 
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        {stats.map((s, i) => (
-          <GlassCard key={s.label} delay={80 + i * 60} className="p-4 sm:p-5">
-            <div className="bg-primary-soft text-primary mb-3 grid h-9 w-9 place-items-center rounded-2xl">
-              <s.icon className="h-4 w-4" />
+      {/* 4 Stats Cards */}
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        {stats.map((s) => (
+          <div key={s.label} className="bg-card border border-border rounded-lg p-3.5 shadow-xs space-y-1">
+            <div className="flex items-center justify-between">
+              <span className="text-muted-foreground text-xs">{s.label}</span>
+              <div className="text-[#008069] dark:text-[#00a884] bg-[#008069]/10 p-1.5 rounded">
+                <s.icon className="h-3.5 w-3.5" />
+              </div>
             </div>
-            <div className="text-2xl font-bold tracking-tight sm:text-3xl">{s.value}</div>
-            <div className="text-muted-foreground mt-1 text-xs">{s.label}</div>
-            <div className="text-primary mt-2 text-xs font-semibold">{s.delta}</div>
-          </GlassCard>
+            <div className="text-xl font-bold tracking-tight text-foreground">{s.value}</div>
+            <div className="text-[10px] text-[#008069] dark:text-[#25D366] font-semibold">{s.delta}</div>
+          </div>
         ))}
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-3">
-        <GlassCard delay={320} className="lg:col-span-2">
-          <SectionTitle title="Pipeline health" hint="Revenue in ₹ Lakhs" />
-          <div className="h-56 w-full">
+      {/* Chart & Suggestions */}
+      <div className="grid gap-3 lg:grid-cols-3">
+        <div className="bg-card border border-border rounded-lg p-4 shadow-xs lg:col-span-2 space-y-3">
+          <SectionTitle title="Pipeline Growth" hint="Revenue in ₹ Lakhs" />
+          <div className="h-52 w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={revenueSeries} margin={{ top: 16, right: 8, bottom: 0, left: 0 }}>
+              <AreaChart data={revenueSeries} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
                 <defs>
                   <linearGradient id="rev" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="var(--color-primary)" stopOpacity={0.5} />
-                    <stop offset="100%" stopColor="var(--color-primary)" stopOpacity={0} />
+                    <stop offset="0%" stopColor="#008069" stopOpacity={0.4} />
+                    <stop offset="100%" stopColor="#008069" stopOpacity={0} />
                   </linearGradient>
                 </defs>
                 <XAxis
                   dataKey="month"
                   axisLine={false}
                   tickLine={false}
-                  tick={{ fontSize: 12, fill: "var(--color-muted-foreground)" }}
+                  tick={{ fontSize: 11, fill: "var(--color-muted-foreground)" }}
                 />
                 <Tooltip
                   contentStyle={{
-                    borderRadius: 18,
+                    borderRadius: 8,
                     border: "1px solid var(--color-border)",
                     background: "var(--color-popover)",
-                    fontSize: 12,
+                    fontSize: 11,
                   }}
                 />
                 <Area
                   type="monotone"
                   dataKey="revenue"
-                  stroke="var(--color-primary)"
-                  strokeWidth={3}
+                  stroke="#008069"
+                  strokeWidth={2}
                   fill="url(#rev)"
                 />
               </AreaChart>
             </ResponsiveContainer>
           </div>
-        </GlassCard>
+        </div>
 
-        <GlassCard delay={380}>
-          <SectionTitle title="AI suggestions" />
-          <ul className="mt-2 space-y-3 text-sm">
-            {hot.length > 0 ? (
-              hot.map(l => (
-                <li key={`sug-${l.id}`} className="text-muted-foreground px-3 py-2 text-xs border-b border-border/40 last:border-0">
-                  <strong className="text-foreground">{l.name}</strong> has a high intent score. Consider scheduling a demo soon.
+        <div className="bg-card border border-border rounded-lg p-4 shadow-xs flex flex-col justify-between">
+          <div className="space-y-2.5">
+            <SectionTitle title="AI Autopilot Suggestions" hint="Call & Lead Intelligence" />
+            <ul className="space-y-2">
+              {serverCalls.length > 0 && serverCalls[0].summary ? (
+                <li className="text-xs bg-muted/60 p-2.5 rounded border border-border space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <strong className="text-foreground text-xs font-bold">
+                      🔥 {serverLeads.find(l => l.id === serverCalls[0].leadId)?.name || "Customer Call"}
+                    </strong>
+                    <span className="text-[10px] text-[#008069] font-bold">AI Call Intel</span>
+                  </div>
+                  <p className="text-muted-foreground text-[11px] leading-snug">
+                    "{serverCalls[0].summary}"
+                  </p>
+                  {serverCalls[0].analysis?.recommendedNextAction && (
+                    <div className="text-[10px] text-[#008069] font-semibold">
+                      Recommended: {serverCalls[0].analysis.recommendedNextAction}
+                    </div>
+                  )}
+                  <div className="flex items-center gap-1.5 pt-1">
+                    <Link
+                      to="/call-autopilot"
+                      className="bg-[#008069] text-white px-2 py-0.5 rounded text-[10px] font-bold hover:opacity-90 transition"
+                    >
+                      Call with AI
+                    </Link>
+                    <Link
+                      to="/leads"
+                      className="bg-muted border border-border text-foreground px-2 py-0.5 rounded text-[10px] font-medium hover:bg-muted/80 transition"
+                    >
+                      View Lead
+                    </Link>
+                  </div>
                 </li>
-              ))
-            ) : (
-              <li className="text-muted-foreground px-3 py-2.5 text-center text-xs">
-                No suggestions available yet.
-              </li>
-            )}
-          </ul>
+              ) : hot.length > 0 ? (
+                hot.map(l => (
+                  <li key={`sug-${l.id}`} className="text-xs bg-muted/60 p-2.5 rounded border border-border">
+                    <strong className="text-foreground">{l.name}</strong> ({l.company}): Score is {l.score}/100. Next: {l.nextAction}.
+                  </li>
+                ))
+              ) : (
+                <li className="text-muted-foreground text-xs text-center py-4">No suggestions right now.</li>
+              )}
+            </ul>
+          </div>
           <Link
-            to="/ai-brain"
-            className="text-primary mt-4 inline-block text-xs font-semibold"
+            to="/call-autopilot"
+            className="text-[#008069] dark:text-[#00a884] font-semibold text-xs flex items-center gap-1 mt-3 hover:underline"
           >
-            Open AI Brain →
+            <span>Manage Call Autopilot & AI Rules</span>
+            <ArrowRight className="h-3 w-3" />
           </Link>
-        </GlassCard>
+        </div>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-3">
-        <GlassCard delay={420} className="lg:col-span-2">
-          <SectionTitle title="Hot leads" hint="Ranked by AI score" />
-          <div className="mt-2 space-y-2">
+      {/* Hot Leads & Schedule */}
+      <div className="grid gap-3 lg:grid-cols-2">
+        <div className="bg-card border border-border rounded-lg p-4 shadow-xs space-y-2.5">
+          <SectionTitle title="Hot Leads Priority" hint="Ranked by AI Score" />
+          <div className="space-y-2">
             {hot.map((l) => (
               <Link
                 key={l.id}
-                to="/leads"
-                className="hover:bg-primary-soft/60 flex items-center gap-3 rounded-[18px] px-2 py-2.5 transition"
+                to="/conversations"
+                className="hover:bg-muted/60 flex items-center gap-3 rounded-lg p-2 transition border border-transparent hover:border-border"
               >
-                <span className="bg-primary-soft text-primary grid h-10 w-10 shrink-0 place-items-center rounded-2xl text-xs font-bold">
+                <span className="bg-[#008069] text-white grid h-9 w-9 shrink-0 place-items-center rounded-full text-xs font-bold">
                   {l.initials}
                 </span>
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate text-sm font-semibold">{l.name}</span>
-                  <span className="text-muted-foreground block truncate text-xs">
+                  <span className="block truncate text-xs font-bold text-foreground">{l.name}</span>
+                  <span className="text-muted-foreground block truncate text-[11px]">
                     {l.company} · {l.nextAction}
                   </span>
                 </span>
-                <span className="text-primary shrink-0 text-sm font-bold">{l.score}</span>
+                <span className="text-[#008069] dark:text-[#25D366] text-xs font-bold">{l.score} pts</span>
               </Link>
             ))}
           </div>
-        </GlassCard>
+        </div>
 
-        <GlassCard delay={460}>
-          <SectionTitle title="Today's schedule" />
-          <ul className="mt-3 space-y-3 text-sm">
+        <div className="bg-card border border-border rounded-lg p-4 shadow-xs space-y-2.5">
+          <SectionTitle title="Today's Schedule" />
+          <ul className="space-y-2 text-xs">
             {todayTasks.length > 0 ? (
               todayTasks.map(t => (
-                <li key={t.id} className="flex justify-between items-center text-xs border-b border-border/40 pb-2 last:border-0 last:pb-0">
+                <li key={t.id} className="flex justify-between items-center bg-muted/60 p-2.5 rounded border border-border">
                   <span>
-                    <strong className="text-foreground block">{t.title}</strong>
-                    <span className="text-muted-foreground">{t.lead}</span>
+                    <strong className="text-foreground block text-xs">{t.title}</strong>
+                    <span className="text-muted-foreground text-[11px]">{t.lead}</span>
                   </span>
-                  <span className="bg-primary/10 text-primary px-2 py-1 rounded-full">{t.tag}</span>
+                  <span className="bg-[#008069]/10 text-[#008069] dark:text-[#00a884] px-2 py-0.5 rounded text-[10px] font-semibold">{t.tag}</span>
                 </li>
               ))
             ) : (
-              <li className="text-muted-foreground px-3 py-2.5 text-center text-xs">
-                No meetings scheduled today.
-              </li>
+              <li className="text-muted-foreground text-center py-4">No tasks scheduled for today.</li>
             )}
           </ul>
-        </GlassCard>
+        </div>
       </div>
     </div>
   );

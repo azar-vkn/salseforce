@@ -131,11 +131,13 @@ export function useLeads() {
     queryFn: async (): Promise<Lead[]> => {
       if (isSupabaseConfigured) {
         try {
-          const { data, error } = await supabase.from("leads").select("*, buyer_dna(*)");
+          // Fetch leads. Note: Live DB has `dna` as a JSON column in leads, not a separate table.
+          const { data, error } = await supabase.from("leads").select("*");
           if (!error && data && data.length > 0) {
             const parsedLeads = data.map((row: any) => {
               const base = parseLeadFromSupabase(row);
-              const dnaRow = Array.isArray(row.buyer_dna) ? row.buyer_dna[0] : row.buyer_dna;
+              // Handle JSON dna column
+              const dnaRow = row.dna;
               if (dnaRow) {
                 base.dna = {
                   budget: dnaRow.budget ?? base.dna.budget,
@@ -152,9 +154,11 @@ export function useLeads() {
             });
             setLocalCache("leads", parsedLeads);
             return parsedLeads;
+          } else if (error) {
+            console.warn("Supabase select leads error:", error);
           }
         } catch (e) {
-          console.warn("Supabase fetch leads error:", e);
+          console.warn("Supabase fetch leads exception:", e);
         }
       }
       return getLocalCache<Lead>("leads", INITIAL_LEADS);
@@ -191,20 +195,7 @@ export function useCreateLead() {
         try {
           const payload = sanitizeLeadForSupabase(newLead);
           await supabase.from("leads").insert({ ...payload, id });
-          await supabase.from("conversations").upsert({ id: newLead.id, lead_id: newLead.id, messages: [] });
-          if (newLead.dna) {
-            await supabase.from("buyer_dna").insert({
-              lead_id: id,
-              budget: newLead.dna.budget,
-              intent: newLead.dna.intent,
-              trust: newLead.dna.trust,
-              price_sensitivity: newLead.dna.priceSensitivity,
-              urgency: newLead.dna.urgency,
-              language: newLead.dna.language,
-              style: newLead.dna.style,
-              confidence: newLead.dna.confidence
-            });
-          }
+          await supabase.from("conversations").upsert({ id: newLead.id, messages: [] });
         } catch (e) {
           console.error("Supabase create lead error:", e);
         }
@@ -244,18 +235,6 @@ export function useUpdateLead() {
         try {
           const payload = sanitizeLeadForSupabase(mergedLead);
           await supabase.from("leads").upsert({ ...payload, id });
-          if (data.dna) {
-            await supabase.from("buyer_dna").update({
-              budget: data.dna.budget,
-              intent: data.dna.intent,
-              trust: data.dna.trust,
-              price_sensitivity: data.dna.priceSensitivity,
-              urgency: data.dna.urgency,
-              language: data.dna.language,
-              style: data.dna.style,
-              confidence: data.dna.confidence
-            }).eq("lead_id", id);
-          }
         } catch (e) {
           console.error("Supabase update lead error:", e);
         }
@@ -337,7 +316,8 @@ export function useCreateTask() {
 
       if (isSupabaseConfigured) {
         try {
-          await supabase.from("tasks").insert(newTask);
+          const { priority, ...dbTask } = newTask;
+          await supabase.from("tasks").insert(dbTask);
         } catch (e) {
           console.error("Supabase create task error:", e);
         }
@@ -362,7 +342,8 @@ export function useUpdateTask() {
 
       if (isSupabaseConfigured) {
         try {
-          await supabase.from("tasks").update(data).eq("id", id);
+          const { priority, ...dbData } = data;
+          await supabase.from("tasks").update(dbData).eq("id", id);
         } catch (e) {
           console.error("Supabase update task error:", e);
         }
@@ -479,21 +460,7 @@ export function useAddMessage() {
         try {
           const thread = updated.find((c) => c.id === leadId);
           if (thread) {
-            await supabase.from("conversations").upsert({ id: leadId, lead_id: leadId, messages: thread.messages });
-          }
-
-          const { data: convData } = await supabase.from("conversations").select("id").eq("lead_id", leadId).maybeSingle();
-          if (convData) {
-            await supabase.from("messages").insert({
-              id: message.id,
-              conversation_id: convData.id,
-              lead_id: leadId,
-              from_type: message.from,
-              text: message.text,
-              channel: message.channel || 'whatsapp',
-              status: message.status || 'sent',
-              ai_confidence: message.aiConfidence
-            });
+            await supabase.from("conversations").upsert({ id: leadId, messages: thread.messages });
           }
         } catch (e) {
            console.error("Failed to insert message", e);
@@ -769,6 +736,52 @@ export function useClearCalls() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["calls"] });
+    },
+  });
+}
+
+// ── App Settings (auto_reply toggle) ──────────────────────────────
+export function useAutoReply() {
+  return useQuery({
+    queryKey: ["app_settings", "auto_reply"],
+    queryFn: async () => {
+      if (isSupabaseConfigured) {
+        try {
+          const { data } = await supabase
+            .from("app_settings")
+            .select("value")
+            .eq("key", "auto_reply")
+            .maybeSingle();
+          return data?.value?.enabled ?? true;
+        } catch {
+          return true;
+        }
+      }
+      return true;
+    },
+    staleTime: 5000,
+  });
+}
+
+export function useSetAutoReply() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (enabled: boolean) => {
+      if (isSupabaseConfigured) {
+        await supabase.from("app_settings").upsert({
+          key: "auto_reply",
+          value: { enabled },
+          updated_at: new Date().toISOString(),
+        });
+      }
+      return enabled;
+    },
+    onMutate: async (enabled) => {
+      await queryClient.cancelQueries({ queryKey: ["app_settings", "auto_reply"] });
+      queryClient.setQueryData(["app_settings", "auto_reply"], enabled);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["app_settings", "auto_reply"] });
     },
   });
 }

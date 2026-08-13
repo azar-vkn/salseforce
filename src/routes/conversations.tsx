@@ -27,7 +27,7 @@ import {
 } from "lucide-react";
 import { GlassCard, Island, Ring, SectionTitle } from "@/components/glass";
 import { type Message, type ChannelType, type Lead } from "@/lib/types";
-import { useLeads, useConversations, useAddMessage, useUpdateConversation, useUpdateLead, useAiRules, useCreateLead } from "@/hooks/use-supabase";
+import { useLeads, useConversations, useAddMessage, useUpdateConversation, useUpdateLead, useAiRules, useCreateLead, useCreateTask, useAutoReply, useSetAutoReply } from "@/hooks/use-supabase";
 import { useRealtimePresence } from "@/hooks/use-realtime";
 import { generateAutonomousReply } from "@/lib/ai-service";
 import { sendWhatsAppTextMessage, sendWhatsAppTemplateMessage, getWhatsAppCredentials } from "@/lib/whatsapp";
@@ -64,12 +64,14 @@ function Conversations() {
   const addMessageMutation = useAddMessage();
   const updateLeadMutation = useUpdateLead();
   const createLeadMutation = useCreateLead();
+  const createTaskMutation = useCreateTask();
+  const { data: autoReply = true } = useAutoReply();
+  const setAutoReplyMutation = useSetAutoReply();
 
   const [activeId, setActiveId] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
   const [mobilePane, setMobilePane] = useState<"list" | "chat">("list");
   const [searchQuery, setSearchQuery] = useState("");
-  const [autoReply, setAutoReply] = useState(true);
   const [isAiReplying, setIsAiReplying] = useState(false);
   const [suggestedDraft, setSuggestedDraft] = useState<{ text: string; confidence: number } | null>(null);
 
@@ -79,13 +81,15 @@ function Conversations() {
   const { typingUsers, sendTyping } = useRealtimePresence(activeId);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    if (serverLeads.length > 0 && !activeId) {
-      setActiveId(serverLeads[0].id);
-    }
-  }, [serverLeads, activeId]);
+  const validLeads = serverLeads;
 
-  const lead = serverLeads.find((l) => l.id === activeId) || serverLeads[0];
+  useEffect(() => {
+    if (validLeads.length > 0 && !activeId) {
+      setActiveId(validLeads[0].id);
+    }
+  }, [validLeads, activeId]);
+
+  const lead = validLeads.find((l) => l.id === activeId) || validLeads[0];
   const activeThread = serverThreads.find((t) => t.id === activeId);
   const messages: Message[] = activeThread?.messages ?? [];
 
@@ -104,7 +108,7 @@ function Conversations() {
     );
   }
 
-  if (!serverLeads.length) {
+  if (!validLeads.length) {
     return <div className="p-8 text-center text-muted-foreground text-sm">No chats found in pipeline.</div>;
   }
 
@@ -163,6 +167,16 @@ function Conversations() {
                 ...(result.detectedEmotion ? { emotion: result.detectedEmotion } : {}),
                 status: "Replied",
               },
+            });
+          }
+
+          if (result.task) {
+            createTaskMutation.mutate({
+              title: result.task.title,
+              lead: targetLead.name,
+              tag: "AI Task",
+              column: "today",
+              priority: result.task.priority,
             });
           }
 
@@ -278,7 +292,7 @@ function Conversations() {
           if (res.isSimulated) {
             toast.info("💬 Saved to CRM (Simulation mode: configure Meta API in Settings for live WhatsApp delivery)");
           } else if (res.messageId) {
-            toast.success(`📱 Sent to Meta API (+${targetPhone.replace(/\D/g, "")}). (Meta requires an inbound message from the customer within 24h for free-form text delivery).`);
+            toast.success(`📱 Sent to Meta API (+${targetPhone.replace(/\D/g, "")})`);
           }
         } else if (res.error) {
           addMessageMutation.mutate({ leadId: activeId, message: { ...newMessage, status: "failed" } });
@@ -356,7 +370,7 @@ function Conversations() {
     }
   }
 
-  const filteredLeads = serverLeads.filter(
+  const filteredLeads = validLeads.filter(
     (l) => l.name.toLowerCase().includes(searchQuery.toLowerCase()) || l.company.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
@@ -399,7 +413,9 @@ function Conversations() {
 
         <div className="flex items-center gap-2">
           <button
-            onClick={() => setAutoReply((v) => !v)}
+            onClick={() => {
+              setAutoReplyMutation.mutate(!autoReply);
+            }}
             className={cn(
               "flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold transition cursor-pointer border",
               autoReply
@@ -588,13 +604,19 @@ function Conversations() {
               </div>
             ) : null}
 
-            {messages.map((m) => {
+            {(() => {
+              const seen = new Set<string>();
+              return messages.filter(m => {
+                if (seen.has(m.id)) return false;
+                seen.add(m.id);
+                return true;
+              }).map((m, idx) => {
               const isRep = m.from === "me";
               const isAi = m.from === "ai_agent";
 
               return (
                 <div
-                  key={m.id}
+                  key={`${m.id}-${idx}`}
                   className={cn("flex", isRep || isAi ? "justify-end" : "justify-start")}
                 >
                   <div
@@ -633,7 +655,7 @@ function Conversations() {
                   </div>
                 </div>
               );
-            })}
+            })})()}
 
             {/* Typing status */}
             {isAiReplying ? (
@@ -690,25 +712,6 @@ function Conversations() {
 
           {/* WhatsApp Action Toolbar & Chat Input */}
           <div className="bg-card dark:bg-[#202c33] border-t border-border p-2.5 space-y-2">
-            {/* Quick Action Chips */}
-            <div className="flex flex-wrap gap-1">
-              {[
-                { label: "WhatsApp Template", icon: Zap, action: handleSendTemplate },
-                { label: "Book Demo", icon: CalendarPlus, action: () => send(`Hi ${lead.name.split(" ")[0]}, let's schedule a demo: https://cal.com/salesmind`) },
-                { label: "Send Quote", icon: FileText, action: () => send(`Hi ${lead.name.split(" ")[0]}, attached is your proposal of ${lead.value}.`) },
-                { label: "SOC2 Compliance", icon: ShieldCheck, action: () => send(`Here is our SOC2 Type II compliance audit report.`) },
-              ].map((q) => (
-                <button
-                  key={q.label}
-                  onClick={q.action}
-                  className="flex items-center gap-1 rounded bg-muted/80 hover:bg-muted px-2 py-1 text-[11px] font-medium text-foreground transition cursor-pointer"
-                >
-                  <q.icon className="h-3 w-3 text-[#008069] dark:text-[#00a884]" />
-                  <span>{q.label}</span>
-                </button>
-              ))}
-            </div>
-
             {/* Input Bar */}
             <form
               className="flex items-center gap-2"

@@ -102,12 +102,41 @@ async function fetchAiBrainKnowledge(): Promise<string> {
 /**
  * Generate AI Brain response using OpenRouter LLM (primary) or Gemini (fallback)
  */
+function parseLLMResponse(text: string, defaultConfidence: number) {
+  let jsonStr = text;
+  const match = text.match(/\{[\s\S]*\}/);
+  if (match) {
+    jsonStr = match[0];
+  }
+  
+  jsonStr = jsonStr.replace(/```json/gi, '').replace(/```/g, '').trim();
+
+  try {
+    const parsed = JSON.parse(jsonStr);
+    return { 
+      reply: parsed.reply || parsed.replyText || "I am unable to process that at the moment.", 
+      confidence: parsed.confidence || defaultConfidence, 
+      task: parsed.task 
+    };
+  } catch (e) {
+    console.warn("JSON Parse Error", e);
+    const replyMatch = jsonStr.match(/"(?:reply|replyText)"\s*:\s*"([^"\\]*(?:\\.[^"\\]*)*)"/);
+    if (replyMatch) {
+       let cleanReply = replyMatch[1].replace(/\\"/g, '"').replace(/\\n/g, '\n');
+       return { reply: cleanReply, confidence: 90 };
+    }
+  }
+  
+  let cleanText = text.replace(/```json/gi, '').replace(/```/g, '').replace(/["{}]/g, '').trim();
+  return { reply: cleanText || "I received your message but encountered an error processing it.", confidence: 50 };
+}
+
 async function generateAiBrainResponse(
   customerMessage: string,
   customerName: string,
   conversationHistory: string,
   knowledgeBase: string
-): Promise<{ reply: string; confidence: number }> {
+): Promise<{ reply: string; confidence: number; task?: { title: string; priority: string } }> {
 
   const systemPrompt = `You are the AI Sales Assistant for SalesMind AI. You are the company's central AI Brain.
 
@@ -128,7 +157,18 @@ STRICT RULES:
 4. Keep responses to 2-4 sentences. Be concise but helpful.
 5. Follow all business rules in the knowledge base.
 6. For pricing questions, always include specific numbers.
-7. For greetings, welcome them and briefly describe what you can help with.`;
+7. For greetings, welcome them and briefly describe what you can help with.
+8. You ARE fully capable of scheduling meetings, calls, and assigning tasks to the team. If the customer asks to schedule a call, requests a demo, wants a proposal, or implies any actionable task for the sales team, you MUST agree to it and include a "task" object with details.
+
+Respond ONLY with a valid JSON object. Do not use markdown blocks (like \`\`\`json). Do not include any intro text or trailing commas. Strictly output this JSON format and nothing else:
+{
+  "reply": "Direct answer with exact price/service details",
+  "confidence": 94,
+  "task": {
+    "title": "Send proposal to customer",
+    "priority": "high"
+  }
+}`;
 
   const messages = [
     { role: "system", content: systemPrompt },
@@ -167,7 +207,7 @@ STRICT RULES:
         const text = data?.choices?.[0]?.message?.content?.trim();
         if (text && text.length > 5) {
           console.log("AI Brain (OpenRouter/Gemini-2.5-Flash) generated response");
-          return { reply: text, confidence: 96 };
+          return parseLLMResponse(text, 96);
         }
       } else {
         const err = await orRes.text();
@@ -199,7 +239,7 @@ STRICT RULES:
           const text = data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
           if (text && text.length > 5) {
             console.log(`AI Brain (Gemini/${model}) generated response`);
-            return { reply: text, confidence: 94 };
+            return parseLLMResponse(text, 94);
           }
         }
       }
@@ -267,13 +307,6 @@ serve(async (req: Request): Promise<Response> => {
             console.log(`Inbound from ${senderName} (${senderPhone}): "${messageText}"`);
 
             // ── Find or Create Lead ──────────────────────────────
-            // Get the organization ID (needed for all inserts)
-            let orgId: string | null = null;
-            const { data: orgs } = await supabase.from("organizations").select("id").limit(1);
-            if (orgs && orgs.length > 0) {
-              orgId = orgs[0].id;
-            }
-
             const { data: allLeads } = await supabase.from("leads").select("*");
 
             let matchedLead = allLeads?.find((l: any) => {
@@ -296,85 +329,42 @@ serve(async (req: Request): Promise<Response> => {
             // Create new lead if no match found
             if (!matchedLead) {
               console.log(`Creating new lead for ${senderName || senderPhone}...`);
-              const leadId = crypto.randomUUID();
-
-              // Build lead payload matching the actual leads table schema
-              const leadPayload: Record<string, any> = {
-                id: leadId,
+              const newLead = {
+                id: crypto.randomUUID(),
                 name: senderName || `WhatsApp +${senderPhone}`,
                 company: senderName ? `${senderName}'s Company` : `+${senderPhone}`,
                 initials: (senderName || "WA").slice(0, 2).toUpperCase(),
                 score: 70,
                 stage: "New",
-                next_action: "Review inbound WhatsApp message",
+                nextAction: "Review inbound WhatsApp message",
                 emotion: "Curious",
                 status: "Unread",
                 value: "₹0",
-                phone: senderPhone,
-                whatsapp: senderPhone,
+                dna: {
+                  budget: 65, intent: 75, trust: 65,
+                  priceSensitivity: 50, urgency: 65,
+                  language: "English", style: "WhatsApp Inbound",
+                  confidence: 70, phone: senderPhone, whatsapp: senderPhone,
+                },
               };
 
-              // Add org_id if an organization exists
-              if (orgId) {
-                leadPayload.org_id = orgId;
-              }
-
               const { data: created, error: createErr } = await supabase
-                .from("leads").insert(leadPayload).select().single();
+                .from("leads").insert(newLead).select().single();
 
               if (createErr) {
                 console.error("Lead creation failed:", JSON.stringify(createErr));
-                // Use the payload as a fallback object for this session
-                matchedLead = { ...leadPayload, id: leadId };
+                // Still use the object for this session
+                matchedLead = newLead;
               } else {
                 matchedLead = created;
                 console.log(`New lead created: ${matchedLead.id}`);
-
-                // Create buyer_dna record in separate table
-                try {
-                  await supabase.from("buyer_dna").insert({
-                    lead_id: matchedLead.id,
-                    budget: 65, intent: 75, trust: 65,
-                    price_sensitivity: 50, urgency: 65,
-                    language: "English", style: "WhatsApp Inbound",
-                    confidence: 70,
-                  });
-                } catch (dnaErr) {
-                  console.warn("Buyer DNA insert failed (non-critical):", dnaErr);
-                }
-
-                // Create conversation thread for this new lead
-                try {
-                  const convPayload: Record<string, any> = {
-                    lead_id: matchedLead.id,
-                    channel: "whatsapp",
-                    is_active: true,
-                    messages: [],
-                  };
-                  if (orgId) convPayload.org_id = orgId;
-
-                  await supabase.from("conversations").insert(convPayload);
-                } catch (convErr) {
-                  console.warn("Conversation creation failed (non-critical):", convErr);
-                }
               }
             }
 
             // ── Fetch Conversation ──────────────────────────────
-            // Try by lead_id first, then by id
-            let convRow = null;
-            const { data: convByLead } = await supabase
+            const { data: convRow } = await supabase
               .from("conversations").select("*")
-              .eq("lead_id", matchedLead.id).maybeSingle();
-            convRow = convByLead;
-
-            if (!convRow) {
-              const { data: convById } = await supabase
-                .from("conversations").select("*")
-                .eq("id", matchedLead.id).maybeSingle();
-              convRow = convById;
-            }
-
+              .eq("id", matchedLead.id).maybeSingle();
 
             const existingMessages = convRow?.messages || [];
 
@@ -400,6 +390,17 @@ serve(async (req: Request): Promise<Response> => {
             };
             const updatedMessages = [...existingMessages, incomingMsg];
 
+            // ── Check Global Settings ──────────────────────────────
+            const { data: autoReplyRow } = await supabase.from("app_settings").select("value").eq("key", "auto_reply").maybeSingle();
+            const globalAutoReply = autoReplyRow?.value?.enabled ?? true;
+
+            if (!globalAutoReply) {
+              console.log("Global AI Autopilot is OFF. Skipping AI reply.");
+              await supabase.from("conversations").upsert({ id: matchedLead.id, messages: updatedMessages });
+              await supabase.from("leads").update({ status: "Unread" }).eq("id", matchedLead.id);
+              continue;
+            }
+
             // ── AI Brain: Generate Response ──────────────────────
             // Fetch live knowledge from Supabase AI Brain
             const knowledgeBase = await fetchAiBrainKnowledge();
@@ -410,12 +411,24 @@ serve(async (req: Request): Promise<Response> => {
             ).join("\n");
 
             // Call AI Brain LLM
-            const { reply: aiReply, confidence } = await generateAiBrainResponse(
+            const { reply: aiReply, confidence, task: aiTask } = await generateAiBrainResponse(
               messageText,
               senderName || matchedLead.name,
               history,
               knowledgeBase
             );
+
+            // Save AI task if generated
+            if (aiTask) {
+              await supabase.from("tasks").insert({
+                id: crypto.randomUUID(),
+                title: aiTask.title,
+                lead: matchedLead.name,
+                tag: "AI Task",
+                column: "today"
+              });
+              console.log("AI Task generated:", aiTask.title);
+            }
 
             // Save AI reply
             const aiMsg = {
@@ -431,38 +444,7 @@ serve(async (req: Request): Promise<Response> => {
             processedCount++;
 
             // Save to Supabase
-            if (convRow) {
-              await supabase.from("conversations").update({ messages: updatedMessages }).eq("id", convRow.id);
-              
-              try {
-                await supabase.from("messages").insert([
-                  {
-                    id: incomingMsg.id,
-                    conversation_id: convRow.id,
-                    lead_id: matchedLead.id,
-                    from_type: "them",
-                    text: incomingMsg.text,
-                    channel: "whatsapp",
-                    status: "delivered"
-                  },
-                  {
-                    id: aiMsg.id,
-                    conversation_id: convRow.id,
-                    lead_id: matchedLead.id,
-                    from_type: "ai_agent",
-                    text: aiMsg.text,
-                    channel: "whatsapp",
-                    status: "delivered",
-                    ai_confidence: aiMsg.aiConfidence
-                  }
-                ]);
-              } catch (msgErr) {
-                console.warn("Messages table insert failed (non-critical):", msgErr);
-              }
-            } else {
-              await supabase.from("conversations").upsert({ id: matchedLead.id, messages: updatedMessages });
-            }
-            
+            await supabase.from("conversations").upsert({ id: matchedLead.id, messages: updatedMessages });
             await supabase.from("leads").update({ status: "Unread" }).eq("id", matchedLead.id);
 
             console.log(`AI Brain reply (${confidence}%): "${aiReply.slice(0, 80)}..."`);

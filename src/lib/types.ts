@@ -11,6 +11,7 @@ export type BuyerDna = {
   language: string;
   style: string;
   confidence: number;
+  autoReply?: boolean;
 };
 
 export type Lead = {

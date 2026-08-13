@@ -57,9 +57,9 @@ export function formatMetaCloudApiError(
   const rawMessage = errorObj?.message || "";
   const code = errorObj?.code;
 
-  // 1. Session / Access Token Expired (Code 190)
-  if (code === 190 || rawMessage.toLowerCase().includes("session has expired") || rawMessage.toLowerCase().includes("error validating access token")) {
-    return "WhatsApp Access Token Expired: Your Meta Cloud API token is expired or invalid. Please generate a fresh token (or a permanent System User Token) in Meta Business Manager and update it in Settings.";
+  // 1. Session / Access Token Expired or Access Denied (Code 190 or 131005)
+  if (code === 190 || code === 131005 || rawMessage.toLowerCase().includes("session has expired") || rawMessage.toLowerCase().includes("error validating access token") || rawMessage.toLowerCase().includes("access denied")) {
+    return "WhatsApp Access Token Expired or Invalid: Your Meta Cloud API token is expired or unauthorized (Error 131005). If using a test token, remember they expire every 24 hours! Please generate a fresh token in Meta Business Manager and update it in Settings.";
   }
 
   // 2. Unsupported post request / Object ID does not exist (Code 100 or GraphMethodException)
@@ -106,54 +106,33 @@ export function formatMetaCloudApiError(
  * Gets stored WhatsApp credentials from localStorage or environment
  */
 export function getWhatsAppCredentials() {
+  const envPhoneId = import.meta.env.VITE_WHATSAPP_PHONE_ID || "";
+  const envToken = import.meta.env.VITE_WHATSAPP_ACCESS_TOKEN || "";
+  const envWabaId = import.meta.env.VITE_WHATSAPP_WABA_ID || "";
+
   if (typeof window === "undefined") {
-    return {
-      phoneId: import.meta.env.VITE_WHATSAPP_PHONE_ID || "",
-      accessToken: import.meta.env.VITE_WHATSAPP_ACCESS_TOKEN || "",
-      wabaId: import.meta.env.VITE_WHATSAPP_WABA_ID || "",
-    };
+    return { phoneId: envPhoneId, accessToken: envToken, wabaId: envWabaId };
   }
 
-  try {
-    const rawPhoneId = window.localStorage.getItem("salesmind-whatsapp-phone-id");
-    const rawToken = window.localStorage.getItem("salesmind-whatsapp-token");
-    const rawWabaId = window.localStorage.getItem("salesmind-whatsapp-waba-id");
+  // Helper: read localStorage value (may be JSON-stringified or plain)
+  const readLS = (key: string): string => {
+    try {
+      const raw = window.localStorage.getItem(key);
+      if (!raw) return "";
+      try { return JSON.parse(raw); } catch { return raw; }
+    } catch { return ""; }
+  };
 
-    let phoneId = "";
-    if (rawPhoneId) {
-      try {
-        phoneId = JSON.parse(rawPhoneId);
-      } catch {
-        phoneId = rawPhoneId;
-      }
-    }
+  const lsPhoneId = readLS("salesmind-whatsapp-phone-id");
+  const lsToken = readLS("salesmind-whatsapp-token");
+  const lsWabaId = readLS("salesmind-whatsapp-waba-id");
 
-    let accessToken = "";
-    if (rawToken) {
-      try {
-        accessToken = JSON.parse(rawToken);
-      } catch {
-        accessToken = rawToken;
-      }
-    }
-
-    let wabaId = "";
-    if (rawWabaId) {
-      try {
-        wabaId = JSON.parse(rawWabaId);
-      } catch {
-        wabaId = rawWabaId;
-      }
-    }
-
-    return {
-      phoneId: phoneId || import.meta.env.VITE_WHATSAPP_PHONE_ID || "",
-      accessToken: accessToken || import.meta.env.VITE_WHATSAPP_ACCESS_TOKEN || "",
-      wabaId: wabaId || import.meta.env.VITE_WHATSAPP_WABA_ID || "",
-    };
-  } catch {
-    return { phoneId: "", accessToken: "", wabaId: "" };
-  }
+  // Env vars take priority; localStorage is only a fallback
+  return {
+    phoneId: envPhoneId || lsPhoneId,
+    accessToken: envToken || lsToken,
+    wabaId: envWabaId || lsWabaId,
+  };
 }
 
 /**

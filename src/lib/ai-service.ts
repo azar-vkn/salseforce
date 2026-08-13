@@ -8,6 +8,11 @@ export interface AutonomousReplyResult {
   updatedDna?: Partial<BuyerDna>;
   suggestedAction?: string;
   detectedEmotion?: "Excited" | "Curious" | "Hesitant" | "Neutral" | "Frustrated";
+  task?: {
+    title: string;
+    priority: "low" | "medium" | "high" | "urgent";
+    dueDate?: string;
+  };
 }
 
 /**
@@ -25,6 +30,7 @@ export async function generateAutonomousReply(
     replyText: brainResult.replyText,
     confidence: brainResult.confidence,
     suggestedAction: brainResult.suggestedAction,
+    task: brainResult.task,
     detectedEmotion: brainResult.confidence > 85 ? "Curious" : "Neutral",
     updatedDna: lead ? {
       intent: Math.min(100, Math.max(10, lead.dna.intent + (brainResult.confidence > 85 ? 5 : 0))),
@@ -45,6 +51,7 @@ function generateLocalAutonomousReply(query: string, lead?: Lead): AutonomousRep
       confidence: 94,
       detectedEmotion: "Curious",
       suggestedAction: "Send custom pricing proposal deck",
+      task: { title: "Send custom pricing proposal deck", priority: "high" },
       updatedDna: lead ? {
         budget: Math.min(100, lead.dna.budget + 5),
         intent: Math.min(100, lead.dna.intent + 8),
@@ -59,6 +66,7 @@ function generateLocalAutonomousReply(query: string, lead?: Lead): AutonomousRep
       confidence: 96,
       detectedEmotion: "Excited",
       suggestedAction: "Book calendar slot on Google Calendar / Cal.com",
+      task: { title: "Schedule a live product walkthrough / demo", priority: "urgent" },
       updatedDna: lead ? {
         intent: Math.min(100, lead.dna.intent + 12),
         urgency: Math.min(100, lead.dna.urgency + 15),

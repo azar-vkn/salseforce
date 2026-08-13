@@ -28,6 +28,11 @@ export interface BrainPipelineResult {
   isUnknownQuestion: boolean;
   updatedDna?: Partial<BuyerDna>;
   suggestedAction?: string;
+  task?: {
+    title: string;
+    priority: "low" | "medium" | "high" | "urgent";
+    dueDate?: string;
+  };
 }
 
 /**
@@ -265,13 +270,18 @@ INSTRUCTIONS:
 1. State the exact prices, services, or details found in the PUBLISHED COMPANY KNOWLEDGE above.
 2. Never send generic "team will follow up" boilerplates when knowledge is available.
 3. Keep the response friendly, direct, and high-converting (2-3 sentences).
+4. You ARE fully capable of scheduling meetings, calls, and assigning tasks to the team. If the customer asks to schedule a call, requests a demo, wants a proposal, or implies any actionable task for the sales team, you MUST agree to it and include a "task" object with details.
 
 Respond with a JSON object strictly in this format:
 {
   "replyText": "Direct answer with exact price/service details",
   "confidence": 94,
   "intentDetected": "Pricing / Service Inquiry",
-  "suggestedAction": "Send proposal"
+  "suggestedAction": "Send proposal",
+  "task": {
+    "title": "Send proposal to customer",
+    "priority": "high"
+  }
 }`;
 
       const result = await model.generateContent(prompt);
@@ -289,6 +299,7 @@ Respond with a JSON object strictly in this format:
             intentDetected: parsed.intentDetected || "Grounded Company Answer",
             isUnknownQuestion: false,
             suggestedAction: parsed.suggestedAction || "Follow up on inquiry",
+            task: parsed.task,
           };
         }
       }

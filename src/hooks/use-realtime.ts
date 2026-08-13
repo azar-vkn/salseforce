@@ -88,7 +88,18 @@ export function useRealtimeSync() {
 }
 
 // Utility to broadcast demo changes cross-tab
-export function broadcastDemoEvent(type: "SYNC_LEADS" | "SYNC_CONVERSATIONS" | "SYNC_TASKS" | "SYNC_CALLS", payload?: Record<string, unknown>) {
+export function broadcastDemoEvent(
+  type:
+    | "SYNC_LEADS"
+    | "SYNC_CONVERSATIONS"
+    | "SYNC_TASKS"
+    | "SYNC_CALLS"
+    | "SYNC_KNOWLEDGE"
+    | "SYNC_DOCUMENTS"
+    | "SYNC_RULES"
+    | "SYNC_UNKNOWN",
+  payload?: Record<string, unknown>
+) {
   if (demoBroadcastChannel) {
     try {
       demoBroadcastChannel.postMessage({ type, payload });
@@ -97,6 +108,7 @@ export function broadcastDemoEvent(type: "SYNC_LEADS" | "SYNC_CONVERSATIONS" | "
     }
   }
 }
+
 
 // Realtime typing & presence indicator
 export function useRealtimePresence(activeLeadId?: string | null) {

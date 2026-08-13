@@ -1,10 +1,6 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
-import { type Lead, type BuyerDna, type Message, type AiAgentRule } from "@/lib/types";
+import { executeAiBrainPipeline } from "@/lib/ai-brain-engine";
+import { type Lead, type BuyerDna, type AiAgentRule } from "@/lib/types";
 import { INITIAL_AI_RULES } from "@/hooks/use-supabase";
-
-const geminiApiKey = import.meta.env.VITE_GEMINI_API_KEY;
-const openrouterApiKey = import.meta.env.VITE_OPENROUTER_API_KEY;
-const OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions";
 
 export interface AutonomousReplyResult {
   replyText: string;
@@ -16,66 +12,27 @@ export interface AutonomousReplyResult {
 
 /**
  * Autonomous AI Query Resolution Pipeline
- * Evaluates the query, estimates confidence, crafts grounded reply, and extracts DNA insights
+ * Evaluates the query against the Central CRM AI Brain, enforces business rules, and outputs grounded responses
  */
 export async function generateAutonomousReply(
   customerQuery: string,
   lead?: Lead,
   rules: AiAgentRule = INITIAL_AI_RULES
 ): Promise<AutonomousReplyResult> {
-  const queryLower = customerQuery.toLowerCase();
+  const brainResult = await executeAiBrainPipeline(customerQuery, lead);
 
-  // 1. If Gemini API is configured
-  if (geminiApiKey) {
-    try {
-      const genAI = new GoogleGenerativeAI(geminiApiKey);
-      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-
-      const prompt = `You are an elite enterprise AI Sales Representative for SalesMind AI.
-Company Knowledge: ${rules.knowledgeBase}
-Tone: ${rules.tone}
-Lead Context: Name: ${lead?.name || "Customer"}, Company: ${lead?.company || "Prospect"}, Stage: ${lead?.stage || "New"}, Value: ${lead?.value || "N/A"}.
-Lead Buyer Style: ${lead?.dna?.style || "Data-driven ROI"}, Language: ${lead?.dna?.language || "English"}.
-Prohibited: Never invent pricing discounts over 15% or make false compliance claims.
-
-Customer Incoming Query: "${customerQuery}"
-
-Respond with a JSON object strictly in this format:
-{
-  "replyText": "Concise, warm, high-converting reply (max 3 sentences)",
-  "confidence": number between 60 and 99,
-  "detectedEmotion": "Excited" | "Curious" | "Hesitant" | "Neutral" | "Frustrated",
-  "intentDelta": number between -10 and +15,
-  "urgencyDelta": number between -10 and +15,
-  "suggestedAction": "Specific next action for sales rep"
-}`;
-
-      const result = await model.generateContent(prompt);
-      const response = await result.response;
-      const text = response.text();
-      
-      const jsonMatch = text.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        const parsed = JSON.parse(jsonMatch[0]);
-        return {
-          replyText: parsed.replyText || "Thank you for reaching out! We'd love to help.",
-          confidence: parsed.confidence || 88,
-          detectedEmotion: parsed.detectedEmotion || "Curious",
-          suggestedAction: parsed.suggestedAction || "Follow up on demo",
-          updatedDna: lead ? {
-            intent: Math.min(100, Math.max(10, lead.dna.intent + (parsed.intentDelta || 5))),
-            urgency: Math.min(100, Math.max(10, lead.dna.urgency + (parsed.urgencyDelta || 5))),
-          } : undefined,
-        };
-      }
-    } catch (err) {
-      console.warn("Autonomous Gemini generation failed, using intelligent local engine:", err);
-    }
-  }
-
-  // 2. Intelligent Grounded Local Engine
-  return generateLocalAutonomousReply(customerQuery, lead);
+  return {
+    replyText: brainResult.replyText,
+    confidence: brainResult.confidence,
+    suggestedAction: brainResult.suggestedAction,
+    detectedEmotion: brainResult.confidence > 85 ? "Curious" : "Neutral",
+    updatedDna: lead ? {
+      intent: Math.min(100, Math.max(10, lead.dna.intent + (brainResult.confidence > 85 ? 5 : 0))),
+      urgency: Math.min(100, Math.max(10, lead.dna.urgency + (brainResult.confidence > 85 ? 3 : 0))),
+    } : undefined,
+  };
 }
+
 
 function generateLocalAutonomousReply(query: string, lead?: Lead): AutonomousReplyResult {
   const q = query.toLowerCase();

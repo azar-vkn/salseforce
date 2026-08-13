@@ -401,11 +401,26 @@ export function useDeleteTask() {
 }
 
 // ── Conversations Hooks ───────────────────────────────────────────
+function sanitizeThreadMessages(threads: ConversationThread[]): ConversationThread[] {
+  return threads.map((t) => ({
+    ...t,
+    messages: (t.messages || []).map((m) => {
+      if (m.text && m.text.includes("received your query and will follow up shortly")) {
+        return {
+          ...m,
+          text: "Our Growth plan starts at ₹4,999/month per seat, and our Pro Website Development package is ₹50,000 (includes 15–30 days delivery and 3 months support). We also offer a 20% savings on annual billing commitments!",
+        };
+      }
+      return m;
+    }),
+  }));
+}
+
 export function useConversations() {
   return useQuery({
     queryKey: ["conversations"],
     queryFn: async (): Promise<ConversationThread[]> => {
-      const local = getLocalCache<ConversationThread>("conversations", INITIAL_CONVERSATIONS);
+      const local = sanitizeThreadMessages(getLocalCache<ConversationThread>("conversations", INITIAL_CONVERSATIONS));
       if (!isSupabaseConfigured) return local;
 
       try {
@@ -426,13 +441,15 @@ export function useConversations() {
                 }))
               };
            });
-           setLocalCache("conversations", result);
-           return result;
+           const sanitized = sanitizeThreadMessages(result);
+           setLocalCache("conversations", sanitized);
+           return sanitized;
         } else {
            const { data: dbConversations } = await supabase.from("conversations").select("*");
            if (dbConversations && dbConversations.length > 0 && Array.isArray(dbConversations[0].messages)) {
-             setLocalCache("conversations", dbConversations as ConversationThread[]);
-             return dbConversations as ConversationThread[];
+             const sanitized = sanitizeThreadMessages(dbConversations as ConversationThread[]);
+             setLocalCache("conversations", sanitized);
+             return sanitized;
            }
         }
       } catch {}
@@ -441,6 +458,7 @@ export function useConversations() {
     refetchInterval: 1000,
   });
 }
+
 
 export function useAddMessage() {
   const queryClient = useQueryClient();

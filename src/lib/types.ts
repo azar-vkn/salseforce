@@ -182,3 +182,99 @@ export type CallAutopilotSettings = {
   accountId?: string;
 };
 
+// ── Central CRM AI Brain Types ─────────────────────────────────────
+export type KnowledgeType = 
+  | "company"
+  | "service"
+  | "product"
+  | "pricing"
+  | "offer"
+  | "policy"
+  | "faq"
+  | "business_rule"
+  | "document";
+
+export type KnowledgeStatus = "DRAFT" | "PUBLISHED" | "ARCHIVED";
+
+export interface KnowledgeItem {
+  id: string;
+  orgId?: string;
+  type: KnowledgeType;
+  category: string;
+  title: string;
+  content: Record<string, any> | string;
+  status: KnowledgeStatus;
+  version: number;
+  effectiveDate: string;
+  sourceType: string;
+  sourceId?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface KnowledgeDocument {
+  id: string;
+  orgId?: string;
+  title: string;
+  fileType: string;
+  fileUrl?: string;
+  rawContent: string;
+  status: KnowledgeStatus;
+  version: number;
+  chunkCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface KnowledgeChunk {
+  id: string;
+  documentId?: string;
+  itemId?: string;
+  chunkIndex: number;
+  content: string;
+  metadata?: Record<string, any>;
+  createdAt: string;
+}
+
+export interface BusinessRuleItem {
+  id: string;
+  orgId?: string;
+  ruleType: "do" | "dont" | "escalate" | "confidential";
+  ruleText: string;
+  priority: number;
+  status: KnowledgeStatus;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface UnknownQuestion {
+  id: string;
+  orgId?: string;
+  question: string;
+  customerName?: string;
+  leadId?: string;
+  channel: string;
+  confidence: number;
+  status: "UNANSWERED" | "RESOLVED" | "ARCHIVED";
+  approvedAnswer?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AiBrainStats {
+  knowledgeItemsCount: number;
+  servicesCount: number;
+  productsCount: number;
+  faqsCount: number;
+  policiesCount: number;
+  documentsCount: number;
+  businessRulesCount: number;
+  status: "Ready" | "Syncing" | "Offline";
+  lastUpdated: string;
+  knowledgeCoverage: number; // e.g. 96%
+  questionsAnswered: number;
+  unknownQuestionsCount: number;
+  humanEscalations: number;
+}
+
+

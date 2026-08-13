@@ -1,7 +1,8 @@
 import { supabase } from "@/lib/supabase";
 import type { Lead, Task, ConversationThread } from "@/lib/types";
 import { INITIAL_LEADS, INITIAL_TASKS, INITIAL_CONVERSATIONS } from "@/hooks/use-supabase";
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { executeAiBrainPipeline } from "@/lib/ai-brain-engine";
+
 
 const geminiApiKey = import.meta.env.VITE_GEMINI_API_KEY;
 const openrouterApiKey = import.meta.env.VITE_OPENROUTER_API_KEY;
@@ -131,60 +132,15 @@ function generateSmartFallback(prompt: string, ctx: CrmContext): string {
   return `🤖 **SalesMind AI Insight**\n\nBased on your live CRM context:\n• You have **${ctx.leads.length} leads** in your pipeline.\n• Top recommendation: Complete today's task **"${ctx.tasks[0]?.title || "Follow up with leads"}"**.\n\nHow else can I assist you with closing your deals today?`;
 }
 
-// ── Main AI reply function ──────────────────────────────────────────
+// ── Main AI reply function grounded in Central CRM AI Brain ─────────
 export async function getAiReply(prompt: string): Promise<string> {
   const ctx = await fetchCrmContext();
+  const brainResult = await executeAiBrainPipeline(prompt, ctx.leads[0]);
 
-  // Option 1: Google Gemini API
-  if (geminiApiKey) {
-    try {
-      const genAI = new GoogleGenerativeAI(geminiApiKey);
-      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-      const systemPrompt = buildSystemPrompt(ctx);
-      
-      const result = await model.generateContent(`${systemPrompt}\n\nUser Question: ${prompt}`);
-      const response = await result.response;
-      const text = response.text();
-      if (text) return text;
-    } catch (err) {
-      console.warn("Gemini API Error, falling back to OpenRouter/Local:", err);
-    }
+  if (brainResult.replyText) {
+    return brainResult.replyText;
   }
 
-  // Option 2: OpenRouter API
-  if (openrouterApiKey) {
-    try {
-      const systemPrompt = buildSystemPrompt(ctx);
-      const response = await fetch(OPENROUTER_API_URL, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${openrouterApiKey}`,
-          "HTTP-Referer": window.location.origin,
-          "X-Title": "SalesMind AI",
-        },
-        body: JSON.stringify({
-          model: "openrouter/free",
-          messages: [
-            { role: "system", content: systemPrompt },
-            { role: "user", content: prompt },
-          ],
-          temperature: 0.7,
-          max_tokens: 1024,
-        }),
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        const text = data?.choices?.[0]?.message?.content;
-        if (text) return text;
-      }
-    } catch (err) {
-      console.warn("OpenRouter API Error, falling back to smart local AI:", err);
-    }
-  }
-
-  // Option 3: Smart Local CRM AI Engine Fallback
   return generateSmartFallback(prompt, ctx);
 }
 

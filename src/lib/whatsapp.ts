@@ -323,6 +323,13 @@ export async function sendWhatsAppTextMessage({
 
   // Format phone number to E.164 without leading '+'
   const formattedPhone = to.replace(/\D/g, "");
+  if (!formattedPhone || formattedPhone.length < 7) {
+    return {
+      success: false,
+      error: `Invalid Phone Number ('${to}'): Please save a valid WhatsApp phone number with country code (e.g. 919876543210) for this lead.`,
+    };
+  }
+
 
   const endpoint = `https://graph.facebook.com/v21.0/${activePhoneId}/messages`;
   const payload = {

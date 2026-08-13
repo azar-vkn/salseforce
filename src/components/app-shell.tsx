@@ -32,7 +32,8 @@ const nav: readonly NavItem[] = [
   { to: "/call-autopilot", label: "Call Autopilot", icon: PhoneCall, badge: "Voice" },
   { to: "/tasks", label: "Tasks", icon: CalendarCheck },
   { to: "/analytics", label: "Analytics", icon: BarChart3 },
-  { to: "/ai-brain", label: "AI Rules", icon: Bot },
+  { to: "/ai-brain", label: "AI Brain", icon: Bot, badge: "Brain" },
+
   { to: "/settings", label: "Settings", icon: Settings },
 ];
 

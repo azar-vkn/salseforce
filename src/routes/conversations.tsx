@@ -130,6 +130,30 @@ function Conversations() {
 
           addMessageMutation.mutate({ leadId: targetLead.id, message: aiMsg });
 
+          // Dispatch outbound message over Meta WhatsApp Cloud API if phone is configured
+          const targetPhone = targetLead.phone || targetLead.whatsapp;
+          if (targetPhone) {
+            sendWhatsAppTextMessage({ to: targetPhone, body: result.replyText }).then((res) => {
+              if (res.success) {
+                if (res.isSimulated) {
+                  toast.info("💬 Outbound reply simulated (Configure Meta API in Settings for live delivery)");
+                } else {
+                  toast.success(`📱 Outbound WhatsApp delivered to +${targetPhone.replace(/\D/g, "")}`);
+                }
+              } else if (res.error) {
+                toast.error(res.error, {
+                  duration: 8000,
+                  action: {
+                    label: "Open Settings",
+                    onClick: () => {
+                      window.location.href = "/settings";
+                    },
+                  },
+                });
+              }
+            });
+          }
+
           if (result.updatedDna || result.suggestedAction || result.detectedEmotion) {
             updateLeadMutation.mutate({
               id: targetLead.id,
@@ -145,6 +169,7 @@ function Conversations() {
           toast.success(`🤖 Auto-replied (${result.confidence}% conf.)`);
           setIsAiReplying(false);
         }, 1000);
+
       } else {
         setIsAiReplying(false);
         setSuggestedDraft({ text: result.replyText, confidence: result.confidence });
@@ -510,45 +535,48 @@ function Conversations() {
           </div>
 
           {/* Quick Phone Edit Banner */}
-          {editingPhone && (
+          {(editingPhone || !/^\+?\d{7,}$/.test((lead?.phone || lead?.whatsapp || "").trim())) && (
             <div className="bg-amber-500/10 border-b border-amber-500/20 px-3 py-2 flex flex-wrap items-center justify-between gap-2 text-xs">
               <div className="flex items-center gap-2 flex-1 min-w-[200px]">
-                <span className="font-semibold text-amber-600 dark:text-amber-400 shrink-0">WhatsApp Number:</span>
+                <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0" />
+                <span className="font-semibold text-amber-600 dark:text-amber-400 shrink-0">
+                  {/^\+?\d{7,}$/.test((lead?.phone || lead?.whatsapp || "").trim())
+                    ? "WhatsApp Number:"
+                    : `Invalid WhatsApp Number ('${lead?.phone || lead?.whatsapp || "none"}'):`}
+                </span>
                 <input
                   value={tempPhone}
                   onChange={(e) => setTempPhone(e.target.value)}
-                  placeholder="e.g. 918778948875"
-                  className="bg-card px-2.5 py-1 rounded border border-amber-500/40 text-xs w-48 outline-none"
-                  autoFocus
+                  placeholder="Enter your phone number e.g. 919876543210"
+                  className="bg-card px-2.5 py-1 rounded border border-amber-500/40 text-xs w-64 outline-none font-medium"
                 />
               </div>
               <div className="flex items-center gap-1">
                 <button
                   onClick={() => {
-                    if (!tempPhone.trim()) return;
+                    const clean = tempPhone.replace(/\D/g, "");
+                    if (!clean || clean.length < 7) {
+                      toast.error("Please enter a valid phone number with country code (e.g. 919876543210)");
+                      return;
+                    }
                     updateLeadMutation.mutate(
-                      { id: lead.id, data: { phone: tempPhone.trim(), whatsapp: tempPhone.trim() } },
+                      { id: lead.id, data: { phone: clean, whatsapp: clean, value: `+${clean}` } },
                       {
                         onSuccess: () => {
-                          toast.success(`Saved WhatsApp number`);
+                          toast.success(`Saved WhatsApp number +${clean}`);
                           setEditingPhone(false);
                         },
                       }
                     );
                   }}
-                  className="bg-[#008069] text-white text-xs px-2.5 py-1 rounded font-medium cursor-pointer"
+                  className="bg-[#008069] text-white text-xs px-3 py-1 rounded font-bold cursor-pointer hover:bg-[#00a884] transition"
                 >
-                  Save
-                </button>
-                <button
-                  onClick={() => setEditingPhone(false)}
-                  className="text-xs px-2 py-1 text-muted-foreground hover:text-foreground cursor-pointer"
-                >
-                  Cancel
+                  Save Phone Number
                 </button>
               </div>
             </div>
           )}
+
 
           {/* WhatsApp Messages Feed */}
           <div className="flex-1 space-y-2 overflow-y-auto px-4 py-3 bg-[#efeae2] dark:bg-[#0b141a]">

@@ -267,6 +267,13 @@ serve(async (req: Request): Promise<Response> => {
             console.log(`Inbound from ${senderName} (${senderPhone}): "${messageText}"`);
 
             // ── Find or Create Lead ──────────────────────────────
+            // Get the organization ID (needed for all inserts)
+            let orgId: string | null = null;
+            const { data: orgs } = await supabase.from("organizations").select("id").limit(1);
+            if (orgs && orgs.length > 0) {
+              orgId = orgs[0].id;
+            }
+
             const { data: allLeads } = await supabase.from("leads").select("*");
 
             let matchedLead = allLeads?.find((l: any) => {
@@ -289,44 +296,85 @@ serve(async (req: Request): Promise<Response> => {
             // Create new lead if no match found
             if (!matchedLead) {
               console.log(`Creating new lead for ${senderName || senderPhone}...`);
-              const newLead = {
-                id: crypto.randomUUID(),
+              const leadId = crypto.randomUUID();
+
+              // Build lead payload matching the actual leads table schema
+              const leadPayload: Record<string, any> = {
+                id: leadId,
                 name: senderName || `WhatsApp +${senderPhone}`,
                 company: senderName ? `${senderName}'s Company` : `+${senderPhone}`,
                 initials: (senderName || "WA").slice(0, 2).toUpperCase(),
                 score: 70,
                 stage: "New",
-                nextAction: "Review inbound WhatsApp message",
+                next_action: "Review inbound WhatsApp message",
                 emotion: "Curious",
                 status: "Unread",
                 value: "₹0",
                 phone: senderPhone,
                 whatsapp: senderPhone,
-                dna: {
-                  budget: 65, intent: 75, trust: 65,
-                  priceSensitivity: 50, urgency: 65,
-                  language: "English", style: "WhatsApp Inbound",
-                  confidence: 70, phone: senderPhone, whatsapp: senderPhone,
-                },
               };
 
+              // Add org_id if an organization exists
+              if (orgId) {
+                leadPayload.org_id = orgId;
+              }
+
               const { data: created, error: createErr } = await supabase
-                .from("leads").insert(newLead).select().single();
+                .from("leads").insert(leadPayload).select().single();
 
               if (createErr) {
                 console.error("Lead creation failed:", JSON.stringify(createErr));
-                // Still use the object for this session
-                matchedLead = newLead;
+                // Use the payload as a fallback object for this session
+                matchedLead = { ...leadPayload, id: leadId };
               } else {
                 matchedLead = created;
                 console.log(`New lead created: ${matchedLead.id}`);
+
+                // Create buyer_dna record in separate table
+                try {
+                  await supabase.from("buyer_dna").insert({
+                    lead_id: matchedLead.id,
+                    budget: 65, intent: 75, trust: 65,
+                    price_sensitivity: 50, urgency: 65,
+                    language: "English", style: "WhatsApp Inbound",
+                    confidence: 70,
+                  });
+                } catch (dnaErr) {
+                  console.warn("Buyer DNA insert failed (non-critical):", dnaErr);
+                }
+
+                // Create conversation thread for this new lead
+                try {
+                  const convPayload: Record<string, any> = {
+                    lead_id: matchedLead.id,
+                    channel: "whatsapp",
+                    is_active: true,
+                    messages: [],
+                  };
+                  if (orgId) convPayload.org_id = orgId;
+
+                  await supabase.from("conversations").insert(convPayload);
+                } catch (convErr) {
+                  console.warn("Conversation creation failed (non-critical):", convErr);
+                }
               }
             }
 
             // ── Fetch Conversation ──────────────────────────────
-            const { data: convRow } = await supabase
+            // Try by lead_id first, then by id
+            let convRow = null;
+            const { data: convByLead } = await supabase
               .from("conversations").select("*")
-              .eq("id", matchedLead.id).maybeSingle();
+              .eq("lead_id", matchedLead.id).maybeSingle();
+            convRow = convByLead;
+
+            if (!convRow) {
+              const { data: convById } = await supabase
+                .from("conversations").select("*")
+                .eq("id", matchedLead.id).maybeSingle();
+              convRow = convById;
+            }
+
 
             const existingMessages = convRow?.messages || [];
 
@@ -383,7 +431,38 @@ serve(async (req: Request): Promise<Response> => {
             processedCount++;
 
             // Save to Supabase
-            await supabase.from("conversations").upsert({ id: matchedLead.id, messages: updatedMessages });
+            if (convRow) {
+              await supabase.from("conversations").update({ messages: updatedMessages }).eq("id", convRow.id);
+              
+              try {
+                await supabase.from("messages").insert([
+                  {
+                    id: incomingMsg.id,
+                    conversation_id: convRow.id,
+                    lead_id: matchedLead.id,
+                    from_type: "them",
+                    text: incomingMsg.text,
+                    channel: "whatsapp",
+                    status: "delivered"
+                  },
+                  {
+                    id: aiMsg.id,
+                    conversation_id: convRow.id,
+                    lead_id: matchedLead.id,
+                    from_type: "ai_agent",
+                    text: aiMsg.text,
+                    channel: "whatsapp",
+                    status: "delivered",
+                    ai_confidence: aiMsg.aiConfidence
+                  }
+                ]);
+              } catch (msgErr) {
+                console.warn("Messages table insert failed (non-critical):", msgErr);
+              }
+            } else {
+              await supabase.from("conversations").upsert({ id: matchedLead.id, messages: updatedMessages });
+            }
+            
             await supabase.from("leads").update({ status: "Unread" }).eq("id", matchedLead.id);
 
             console.log(`AI Brain reply (${confidence}%): "${aiReply.slice(0, 80)}..."`);

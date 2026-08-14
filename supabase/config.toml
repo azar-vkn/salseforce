@@ -14,3 +14,13 @@ entrypoint = "./functions/vapi-webhook/index.ts"
 enabled = true
 verify_jwt = false
 entrypoint = "./functions/whatsapp-webhook/index.ts"
+
+[functions.trigger-call]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/trigger-call/index.ts"
+
+[functions.bolna-webhook]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/bolna-webhook/index.ts"

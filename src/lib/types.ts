@@ -12,6 +12,9 @@ export type BuyerDna = {
   style: string;
   confidence: number;
   autoReply?: boolean;
+  phone?: string;
+  whatsapp?: string;
+  email?: string;
 };
 
 export type Lead = {
@@ -278,4 +281,76 @@ export interface AiBrainStats {
   humanEscalations: number;
 }
 
+// ── Bolna Voice AI Call Types ──────────────────────────────────────
+export type BolnaCallDirection = "outbound" | "inbound";
+export type BolnaCallStatus = "initiated" | "scheduled" | "queued" | "in-progress" | "completed" | "failed";
 
+export type BolnaCallRecord = {
+  id: string;
+  lead_id?: string | null;
+  bolna_execution_id?: string;
+  direction: BolnaCallDirection;
+  status: BolnaCallStatus;
+  transcript?: string | null;
+  summary?: string | null;
+  extracted_data?: Record<string, any> | null;
+  recording_url?: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+// ── Role-Based Access Control (RBAC) Types ───────────────────────────
+export type UserRole = "admin" | "salesperson";
+
+export type UserProfile = {
+  id: string;
+  org_id?: string;
+  full_name: string;
+  email: string;
+  avatar_url?: string;
+  role: UserRole;
+  status?: "active" | "invited";
+  isPrimaryAdmin?: boolean;
+  created_at?: string;
+  updated_at?: string;
+};
+
+export type RolePermissions = {
+  canManageSettings: boolean;
+  canManageApiKeys: boolean;
+  canManageTeam: boolean;
+  canEditAiBrain: boolean;
+  canDeleteLeads: boolean;
+  canExportData: boolean;
+  canAccessConversations: boolean;
+  canAccessCallAutopilot: boolean;
+  canAccessTasks: boolean;
+  canAccessLeads: boolean;
+};
+
+export const ROLE_PERMISSIONS: Record<UserRole, RolePermissions> = {
+  admin: {
+    canManageSettings: true,
+    canManageApiKeys: true,
+    canManageTeam: true,
+    canEditAiBrain: true,
+    canDeleteLeads: true,
+    canExportData: true,
+    canAccessConversations: true,
+    canAccessCallAutopilot: true,
+    canAccessTasks: true,
+    canAccessLeads: true,
+  },
+  salesperson: {
+    canManageSettings: false,
+    canManageApiKeys: false,
+    canManageTeam: false,
+    canEditAiBrain: false,
+    canDeleteLeads: false,
+    canExportData: false,
+    canAccessConversations: true,
+    canAccessCallAutopilot: true,
+    canAccessTasks: true,
+    canAccessLeads: true,
+  },
+};

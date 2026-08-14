@@ -49,6 +49,8 @@ import {
 } from "@/hooks/use-ai-brain";
 import { executeAiBrainPipeline } from "@/lib/ai-brain-engine";
 import { useLeads } from "@/hooks/use-supabase";
+import { useAuth } from "@/contexts/auth-context";
+import { RoleBadge } from "@/components/role-guard";
 import { type KnowledgeType, type KnowledgeStatus, type KnowledgeItem } from "@/lib/types";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -93,6 +95,7 @@ const tabs: { id: TabType; label: string; icon: any }[] = [
 ];
 
 function CrmAiBrainSuite() {
+  const { role, isAdmin } = useAuth();
   const [activeTab, setActiveTab] = useState<TabType>("overview");
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("ALL");
@@ -188,8 +191,9 @@ function CrmAiBrainSuite() {
             <Bot className="h-6 w-6" />
           </div>
           <div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <h1 className="text-2xl font-bold tracking-tight sm:text-3xl text-foreground">CRM AI Brain</h1>
+              <RoleBadge role={role} size="sm" />
               <span className="flex items-center gap-1 text-[11px] font-semibold bg-emerald-500/15 text-emerald-500 border border-emerald-500/30 px-2.5 py-0.5 rounded-full">
                 <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" /> {stats.status}
               </span>
@@ -199,18 +203,23 @@ function CrmAiBrainSuite() {
         </div>
 
         <div className="flex items-center gap-2">
-          <Island
-            variant="primary"
-            className="px-4 py-2.5 text-xs font-semibold hover:scale-105 transition"
-
-            icon={<Plus className="h-4 w-4" />}
-            onClick={() => {
-              setAddType("service");
-              setIsAddModalOpen(true);
-            }}
-          >
-            + Add Knowledge
-          </Island>
+          {isAdmin ? (
+            <Island
+              variant="primary"
+              className="px-4 py-2.5 text-xs font-semibold hover:scale-105 transition"
+              icon={<Plus className="h-4 w-4" />}
+              onClick={() => {
+                setAddType("service");
+                setIsAddModalOpen(true);
+              }}
+            >
+              + Add Knowledge
+            </Island>
+          ) : (
+            <span className="text-xs text-muted-foreground bg-muted/60 border border-border px-3 py-1.5 rounded-xl">
+              Salesperson: Query & Sandbox Mode
+            </span>
+          )}
         </div>
       </header>
 

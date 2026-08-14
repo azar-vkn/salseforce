@@ -135,7 +135,13 @@ function Conversations() {
           addMessageMutation.mutate({ leadId: targetLead.id, message: aiMsg });
 
           // Dispatch outbound message over Meta WhatsApp Cloud API if phone is configured
-          const targetPhone = targetLead.phone || targetLead.whatsapp;
+          const targetPhone =
+            targetLead.phone ||
+            targetLead.whatsapp ||
+            targetLead.dna?.phone ||
+            targetLead.dna?.whatsapp ||
+            "";
+
           if (targetPhone) {
             sendWhatsAppTextMessage({ to: targetPhone, body: result.replyText }).then((res) => {
               if (res.success) {
@@ -285,7 +291,8 @@ function Conversations() {
     updateLeadMutation.mutate({ id: activeId, data: { status: "Replied" } });
 
     // Dispatch out over Meta WhatsApp Cloud API if phone present
-    const targetPhone = lead?.phone || lead?.whatsapp;
+    const targetPhone =
+      lead?.phone || lead?.whatsapp || lead?.dna?.phone || lead?.dna?.whatsapp || "";
     if (targetPhone) {
       sendWhatsAppTextMessage({ to: targetPhone, body: text }).then((res) => {
         if (res.success) {

@@ -17,6 +17,7 @@ import {
 import { cn } from "@/lib/utils";
 import { AskAiIsland } from "@/components/ask-ai";
 import { useAuth } from "@/contexts/auth-context";
+import { RoleBadge } from "@/components/role-guard";
 
 interface NavItem {
   to: string;
@@ -71,7 +72,7 @@ function ThemeToggle({ compact = false }: { compact?: boolean }) {
 
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
-  const { session, logout } = useAuth();
+  const { session, logout, role } = useAuth();
   const email = session?.user?.email || "Founder";
 
   return (
@@ -136,7 +137,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           </nav>
         </div>
 
-        {/* User Account & Theme */}
+        {/* User Account & Role Badge */}
         <div className="pt-3 border-t border-border flex items-center justify-between gap-2 px-1">
           <div className="flex min-w-0 flex-1 items-center gap-2">
             <div className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-[#008069] text-white text-xs font-semibold uppercase">
@@ -144,12 +145,15 @@ export function AppShell({ children }: { children: ReactNode }) {
             </div>
             <div className="min-w-0 flex-1">
               <span className="block truncate text-xs font-medium text-foreground leading-tight">{email}</span>
-              <button
-                onClick={() => logout()}
-                className="text-muted-foreground hover:text-destructive flex items-center gap-1 text-[10px] transition cursor-pointer mt-0.5"
-              >
-                <LogOut className="h-2.5 w-2.5" /> Sign out
-              </button>
+              <div className="flex items-center gap-2 mt-1">
+                <RoleBadge role={role} size="sm" />
+                <button
+                  onClick={() => logout()}
+                  className="text-muted-foreground hover:text-destructive flex items-center gap-1 text-[10px] transition cursor-pointer"
+                >
+                  <LogOut className="h-2.5 w-2.5" /> Sign out
+                </button>
+              </div>
             </div>
           </div>
           <ThemeToggle compact />

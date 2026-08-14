@@ -449,22 +449,46 @@ serve(async (req: Request): Promise<Response> => {
 
             console.log(`AI Brain reply (${confidence}%): "${aiReply.slice(0, 80)}..."`);
 
-            // ── Dispatch to WhatsApp ────────────────────────────
-            const phoneNumberId = value?.metadata?.phone_number_id;
-            if (WHATSAPP_ACCESS_TOKEN && phoneNumberId) {
+            // ── Dispatch Outbound Reply to WhatsApp ────────────────────────────
+            let activeToken = WHATSAPP_ACCESS_TOKEN;
+            let activePhoneId = value?.metadata?.phone_number_id || "1276074385581968";
+
+            if (!activeToken) {
               try {
-                const fbRes = await fetch(`https://graph.facebook.com/v21.0/${phoneNumberId}/messages`, {
+                const { data: tokenRow } = await supabase
+                  .from("app_settings")
+                  .select("value")
+                  .eq("key", "whatsapp_access_token")
+                  .maybeSingle();
+
+                if (tokenRow?.value?.token) {
+                  activeToken = tokenRow.value.token;
+                  if (tokenRow.value.phone_id) {
+                    activePhoneId = tokenRow.value.phone_id;
+                  }
+                }
+              } catch (e) {
+                console.warn("Could not load token from app_settings:", e);
+              }
+            }
+
+            const cleanRecipient = senderPhone.replace(/\D/g, "");
+
+            if (activeToken && cleanRecipient) {
+              try {
+                console.log(`Dispatching outbound WhatsApp AI reply from ${activePhoneId} to ${cleanRecipient}...`);
+                const fbRes = await fetch(`https://graph.facebook.com/v21.0/${activePhoneId}/messages`, {
                   method: "POST",
                   headers: {
-                    Authorization: `Bearer ${WHATSAPP_ACCESS_TOKEN}`,
+                    Authorization: `Bearer ${activeToken}`,
                     "Content-Type": "application/json",
                   },
                   body: JSON.stringify({
                     messaging_product: "whatsapp",
                     recipient_type: "individual",
-                    to: senderPhone,
+                    to: cleanRecipient,
                     type: "text",
-                    text: { body: aiReply },
+                    text: { preview_url: true, body: aiReply },
                   }),
                 });
                 const fbData = await fbRes.json();
@@ -474,15 +498,17 @@ serve(async (req: Request): Promise<Response> => {
                   console.error("Outbound failed:", outboundError);
                 } else {
                   outboundStatus = "delivered";
-                  console.log("WhatsApp delivered:", fbData?.messages?.[0]?.id);
+                  console.log("WhatsApp delivered successfully! Msg ID:", fbData?.messages?.[0]?.id);
                 }
               } catch (e) {
                 outboundStatus = "exception";
                 outboundError = String(e);
+                console.error("Outbound exception:", e);
               }
             } else {
               outboundStatus = "skipped";
-              outboundError = `Missing: ${!WHATSAPP_ACCESS_TOKEN ? "ACCESS_TOKEN " : ""}${!phoneNumberId ? "phoneNumberId" : ""}`;
+              outboundError = `Missing: ${!activeToken ? "ACCESS_TOKEN " : ""}${!cleanRecipient ? "cleanRecipient" : ""}`;
+              console.warn("Outbound skipped:", outboundError);
             }
           }
         }

@@ -57,12 +57,24 @@ export function formatMetaCloudApiError(
   const rawMessage = errorObj?.message || "";
   const code = errorObj?.code;
 
-  // 1. Session / Access Token Expired or Access Denied (Code 190 or 131005)
-  if (code === 190 || code === 131005 || rawMessage.toLowerCase().includes("session has expired") || rawMessage.toLowerCase().includes("error validating access token") || rawMessage.toLowerCase().includes("access denied")) {
-    return "WhatsApp Access Token Expired or Invalid: Your Meta Cloud API token is expired or unauthorized (Error 131005). If using a test token, remember they expire every 24 hours! Please generate a fresh token in Meta Business Manager and update it in Settings.";
+  // 1. Session / Access Token Expired (Code 190)
+  if (code === 190 || rawMessage.toLowerCase().includes("session has expired") || rawMessage.toLowerCase().includes("error validating access token")) {
+    return "WhatsApp Access Token Expired: Your Meta Cloud API token has expired. If using a temporary developer token, generate a fresh token in Meta Developer Portal (WhatsApp → API Setup). For production, use a permanent System User Token.";
   }
 
-  // 2. Unsupported post request / Object ID does not exist (Code 100 or GraphMethodException)
+  // 2. Recipient Phone Number Not Allowed in Sandbox (Code 131005, 131030, or access denied)
+  if (
+    code === 131005 ||
+    code === 131030 ||
+    rawMessage.toLowerCase().includes("not in allowed list") ||
+    rawMessage.toLowerCase().includes("access denied") ||
+    rawMessage.toLowerCase().includes("recipient_phone_number")
+  ) {
+    const phoneStr = toPhone ? ` (+${toPhone})` : "";
+    return `Recipient Not in Allowed List (Meta Sandbox): Because you are using a Meta Test Phone Number, Meta only permits messaging phone numbers added to your verified test list. Go to developers.facebook.com → WhatsApp → API Setup → Step 2: 'To' dropdown → 'Manage phone number list' to add${phoneStr}.`;
+  }
+
+  // 3. Unsupported post request / Object ID does not exist (Code 100 or GraphMethodException)
   // This occurs when a WhatsApp Business Account (WABA) ID or App ID is used instead of the Phone Number ID in /messages endpoint
   if (
     code === 100 ||
@@ -70,12 +82,6 @@ export function formatMetaCloudApiError(
     rawMessage.includes("does not exist, cannot be loaded due to missing permissions")
   ) {
     return `Invalid Phone Number ID: Object with ID '${phoneId || "configured"}' cannot send messages. In Meta Developer Portal (WhatsApp → API Setup), make sure you copy the 'Phone number ID' (Step 1), NOT your WhatsApp Business Account ID or Meta App ID.`;
-  }
-
-  // 3. Recipient Phone Number Not Allowed (Code 131030 in development sandbox)
-  if (code === 131030 || rawMessage.includes("recipient phone number not in allowed list") || rawMessage.includes("not in allowed list")) {
-    const phoneStr = toPhone ? ` (+${toPhone})` : "";
-    return `Recipient Not in Allowlist: On Meta test numbers, the recipient${phoneStr} must be added to the 'To' phone number allowlist in Meta Developer Portal (WhatsApp → API Setup).`;
   }
 
   // 4. Rate Limit / Pair Throttling (Code 131056 / 80007)

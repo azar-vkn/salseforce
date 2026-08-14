@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { GlassCard, Island, SectionTitle } from "@/components/glass";
 import { isSupabaseConfigured } from "@/lib/supabase";
 import {
@@ -176,6 +176,22 @@ function SettingsPage() {
     import.meta.env.VITE_WHATSAPP_WABA_ID || "1040585292058401"
   );
   const [webhookVerifyToken] = useLocalStorage("salesmind-webhook-verify-token", "salesmind_verify_token_2026");
+
+  // Keep state in sync with updated environment variables
+  useEffect(() => {
+    const envToken = import.meta.env.VITE_WHATSAPP_ACCESS_TOKEN;
+    if (envToken && envToken !== whatsappToken) {
+      setWhatsappToken(envToken);
+    }
+    const envPhone = import.meta.env.VITE_WHATSAPP_PHONE_ID;
+    if (envPhone && envPhone !== whatsappPhoneId) {
+      setWhatsappPhoneId(envPhone);
+    }
+    const envWaba = import.meta.env.VITE_WHATSAPP_WABA_ID;
+    if (envWaba && envWaba !== whatsappWabaId) {
+      setWhatsappWabaId(envWaba);
+    }
+  }, []);
 
   const [testingConnection, setTestingConnection] = useState(false);
   const [inspectionResult, setInspectionResult] = useState<WhatsAppInspectionResult | null>(null);

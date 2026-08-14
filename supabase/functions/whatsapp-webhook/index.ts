@@ -450,26 +450,30 @@ serve(async (req: Request): Promise<Response> => {
             console.log(`AI Brain reply (${confidence}%): "${aiReply.slice(0, 80)}..."`);
 
             // ── Dispatch Outbound Reply to WhatsApp ────────────────────────────
-            let activeToken = WHATSAPP_ACCESS_TOKEN;
+            let activeToken = "";
             let activePhoneId = value?.metadata?.phone_number_id || "1276074385581968";
 
-            if (!activeToken) {
-              try {
-                const { data: tokenRow } = await supabase
-                  .from("app_settings")
-                  .select("value")
-                  .eq("key", "whatsapp_access_token")
-                  .maybeSingle();
+            // 1. First check app_settings table for the latest dynamic token
+            try {
+              const { data: tokenRow } = await supabase
+                .from("app_settings")
+                .select("value")
+                .eq("key", "whatsapp_access_token")
+                .maybeSingle();
 
-                if (tokenRow?.value?.token) {
-                  activeToken = tokenRow.value.token;
-                  if (tokenRow.value.phone_id) {
-                    activePhoneId = tokenRow.value.phone_id;
-                  }
+              if (tokenRow?.value?.token) {
+                activeToken = tokenRow.value.token;
+                if (tokenRow.value.phone_id) {
+                  activePhoneId = tokenRow.value.phone_id;
                 }
-              } catch (e) {
-                console.warn("Could not load token from app_settings:", e);
               }
+            } catch (e) {
+              console.warn("Could not load token from app_settings:", e);
+            }
+
+            // 2. Fall back to edge function environment secret
+            if (!activeToken) {
+              activeToken = WHATSAPP_ACCESS_TOKEN;
             }
 
             const cleanRecipient = senderPhone.replace(/\D/g, "");

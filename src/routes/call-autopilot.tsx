@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import {
   Phone,
   PhoneCall,
@@ -25,6 +25,8 @@ import {
   RefreshCw,
   AlertTriangle,
   Ban,
+  Download,
+  MessageSquareText,
 } from "lucide-react";
 import { GlassCard, Island, EmptyState } from "@/components/glass";
 import {
@@ -53,6 +55,7 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { useQueryClient } from "@tanstack/react-query";
+import jsPDF from "jspdf";
 
 export const Route = createFileRoute("/call-autopilot")({
   head: () => ({
@@ -751,8 +754,8 @@ function CallTableRow({
         <td className="py-3 px-4 text-muted-foreground text-xs">
           {formatTime(call.created_at)}
         </td>
-        <td className="py-3 px-4 text-muted-foreground text-xs max-w-[180px] truncate">
-          {call.summary || "—"}
+        <td className="py-3 px-4">
+          <CallSummaryButton call={call} lead={lead} />
         </td>
         <td className="py-3 px-4 text-right">
           <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
@@ -1040,6 +1043,384 @@ function CallLeadDialog({ leads }: { leads: Lead[] }) {
                 Start Call
               </>
             )}
+          </button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ── Call Summary Button (Table Cell) ────────────────────────────────
+
+function CallSummaryButton({
+  call,
+  lead,
+}: {
+  call: BolnaCallRecord;
+  lead?: Lead;
+}) {
+  const hasSummary = !!call.summary?.trim();
+
+  if (!hasSummary) {
+    return (
+      <span className="text-xs text-muted-foreground/50 select-none">—</span>
+    );
+  }
+
+  return (
+    <CallSummaryDialog call={call} lead={lead}>
+      <button
+        onClick={(e) => e.stopPropagation()}
+        className="inline-flex items-center gap-1.5 rounded-lg border border-teal-500/30 bg-teal-500/10 px-2.5 py-1 text-xs font-medium text-teal-400 hover:bg-teal-500/20 hover:border-teal-500/40 transition-all shadow-xs"
+      >
+        <MessageSquareText className="h-3 w-3" />
+        Summary
+      </button>
+    </CallSummaryDialog>
+  );
+}
+
+// ── Call Summary Dialog (Preview Modal) ─────────────────────────────
+
+function CallSummaryDialog({
+  call,
+  lead,
+  children,
+}: {
+  call: BolnaCallRecord;
+  lead?: Lead;
+  children: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
+  const [generating, setGenerating] = useState(false);
+
+  const leadName = lead?.name || "Unknown Lead";
+  const leadPhone = lead?.phone || lead?.whatsapp || lead?.dna?.phone || lead?.dna?.whatsapp || "N/A";
+  const leadCompany = lead?.company || "";
+  const callDate = formatTime(call.created_at);
+  const callDirection = call.direction === "outbound" ? "Outbound" : "Inbound";
+  const callStatusLabel = STATUS_CONFIG[call.status]?.label || call.status;
+
+  // ── PDF Generation ────────────────────────────────────
+  const handleDownloadPDF = useCallback(() => {
+    setGenerating(true);
+    try {
+      const doc = new jsPDF({ unit: "mm", format: "a4" });
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const margin = 18;
+      const contentWidth = pageWidth - margin * 2;
+      let y = margin;
+
+      // ── Branding Header ────────────────────────────────
+      // Teal accent bar
+      doc.setFillColor(20, 184, 166); // teal-500
+      doc.rect(0, 0, pageWidth, 28, "F");
+
+      // Company name
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(18);
+      doc.setTextColor(255, 255, 255);
+      doc.text("SalesMind AI", margin, 14);
+
+      // Subtitle
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(9);
+      doc.setTextColor(209, 250, 229); // teal-100
+      doc.text("Call Summary Report", margin, 22);
+
+      // Date on right
+      doc.setFontSize(8);
+      doc.setTextColor(209, 250, 229);
+      doc.text(
+        `Generated: ${new Date().toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}`,
+        pageWidth - margin,
+        22,
+        { align: "right" }
+      );
+
+      y = 38;
+
+      // ── Call Metadata Section ──────────────────────────
+      doc.setFillColor(243, 244, 246); // gray-100
+      doc.roundedRect(margin, y, contentWidth, 36, 3, 3, "F");
+
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(11);
+      doc.setTextColor(17, 24, 39); // gray-900
+      doc.text(leadName, margin + 6, y + 9);
+
+      if (leadCompany) {
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(8);
+        doc.setTextColor(107, 114, 128); // gray-500
+        doc.text(leadCompany, margin + 6, y + 15);
+      }
+
+      // Info grid
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(8);
+      doc.setTextColor(75, 85, 99); // gray-600
+
+      const col1 = margin + 6;
+      const col2 = margin + contentWidth / 2;
+      const infoY = y + 23;
+
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(107, 114, 128);
+      doc.text("Phone:", col1, infoY);
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(17, 24, 39);
+      doc.text(leadPhone, col1 + 18, infoY);
+
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(107, 114, 128);
+      doc.text("Direction:", col2, infoY);
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(17, 24, 39);
+      doc.text(callDirection, col2 + 24, infoY);
+
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(107, 114, 128);
+      doc.text("Date:", col1, infoY + 6);
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(17, 24, 39);
+      doc.text(callDate, col1 + 14, infoY + 6);
+
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(107, 114, 128);
+      doc.text("Status:", col2, infoY + 6);
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(17, 24, 39);
+      doc.text(callStatusLabel, col2 + 18, infoY + 6);
+
+      y += 44;
+
+      // ── Summary Section ────────────────────────────────
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(11);
+      doc.setTextColor(20, 184, 166); // teal-500
+      doc.text("Call Summary", margin, y);
+      y += 3;
+
+      // Teal underline
+      doc.setDrawColor(20, 184, 166);
+      doc.setLineWidth(0.5);
+      doc.line(margin, y, margin + 32, y);
+      y += 6;
+
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(9.5);
+      doc.setTextColor(55, 65, 81); // gray-700
+
+      const summaryLines = doc.splitTextToSize(call.summary || "No summary available.", contentWidth);
+      for (const line of summaryLines) {
+        if (y > 270) {
+          doc.addPage();
+          y = margin;
+        }
+        doc.text(line, margin, y);
+        y += 5;
+      }
+
+      // ── Transcript Section ─────────────────────────────
+      if (call.transcript?.trim()) {
+        y += 8;
+
+        if (y > 250) {
+          doc.addPage();
+          y = margin;
+        }
+
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(11);
+        doc.setTextColor(20, 184, 166);
+        doc.text("Call Transcript", margin, y);
+        y += 3;
+
+        doc.setDrawColor(20, 184, 166);
+        doc.setLineWidth(0.5);
+        doc.line(margin, y, margin + 36, y);
+        y += 6;
+
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(8.5);
+        doc.setTextColor(75, 85, 99);
+
+        const transcriptLines = doc.splitTextToSize(call.transcript, contentWidth);
+        for (const line of transcriptLines) {
+          if (y > 274) {
+            doc.addPage();
+            y = margin;
+          }
+          doc.text(line, margin, y);
+          y += 4.5;
+        }
+      }
+
+      // ── Footer on last page ────────────────────────────
+      const pageCount = doc.getNumberOfPages();
+      for (let i = 1; i <= pageCount; i++) {
+        doc.setPage(i);
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(7);
+        doc.setTextColor(156, 163, 175); // gray-400
+        doc.text(
+          `SalesMind AI — Call Summary Report · Page ${i} of ${pageCount}`,
+          pageWidth / 2,
+          290,
+          { align: "center" }
+        );
+      }
+
+      // ── Download ───────────────────────────────────────
+      const safeName = leadName.replace(/[^a-zA-Z0-9]/g, "_").slice(0, 30);
+      const dateStr = new Date(call.created_at).toISOString().slice(0, 10);
+      doc.save(`call-summary-${safeName}-${dateStr}.pdf`);
+      toast.success("📄 PDF downloaded");
+    } catch (err: any) {
+      console.error("PDF generation error:", err);
+      toast.error("Failed to generate PDF");
+    } finally {
+      setGenerating(false);
+    }
+  }, [call, lead, leadName, leadPhone, leadCompany, callDate, callDirection, callStatusLabel]);
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>{children}</DialogTrigger>
+      <DialogContent
+        className="sm:max-w-xl max-h-[85vh] overflow-hidden flex flex-col"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <FileText className="h-5 w-5 text-teal-400" />
+            Call Summary
+          </DialogTitle>
+          <DialogDescription>
+            {callDirection} call with{" "}
+            <span className="font-semibold text-foreground">{leadName}</span>
+            {leadCompany ? ` (${leadCompany})` : ""}
+          </DialogDescription>
+        </DialogHeader>
+
+        <ScrollArea className="flex-1 overflow-auto pr-2 -mr-2">
+          <div className="space-y-4 py-2">
+            {/* Lead & Call Info Card */}
+            <div className="rounded-xl border border-border/50 bg-muted/30 p-4 space-y-3">
+              <div className="flex items-center gap-3">
+                {lead ? (
+                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/15 text-primary text-sm font-bold shrink-0">
+                    {lead.initials}
+                  </div>
+                ) : (
+                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-muted text-muted-foreground text-sm font-bold shrink-0">
+                    ?
+                  </div>
+                )}
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-foreground truncate">
+                    {leadName}
+                  </p>
+                  {leadCompany && (
+                    <p className="text-xs text-muted-foreground truncate">
+                      {leadCompany}
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
+                <div>
+                  <span className="text-muted-foreground">Phone</span>
+                  <p className="font-medium text-foreground">{leadPhone}</p>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Direction</span>
+                  <p className="font-medium text-foreground flex items-center gap-1">
+                    <DirectionIcon direction={call.direction} />
+                    {callDirection}
+                  </p>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Date & Time</span>
+                  <p className="font-medium text-foreground">{callDate}</p>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Status</span>
+                  <div className="mt-0.5">
+                    <StatusBadge status={call.status} />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Summary */}
+            <div>
+              <p className="text-xs font-semibold text-teal-400 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                <MessageSquareText className="h-3.5 w-3.5" />
+                Summary
+              </p>
+              <div className="rounded-lg border border-border/40 bg-card p-3">
+                <p className="text-sm text-foreground leading-relaxed whitespace-pre-wrap">
+                  {call.summary || "No summary available."}
+                </p>
+              </div>
+            </div>
+
+            {/* Transcript */}
+            {call.transcript?.trim() && (
+              <div>
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                  <FileText className="h-3.5 w-3.5" />
+                  Transcript
+                </p>
+                <div className="rounded-lg border border-border/40 bg-card p-3 max-h-52 overflow-auto">
+                  <p className="text-xs text-foreground/80 leading-relaxed whitespace-pre-wrap">
+                    {call.transcript}
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* Recording */}
+            {call.recording_url && (
+              <div>
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                  <Play className="h-3.5 w-3.5" />
+                  Recording
+                </p>
+                <a
+                  href={call.recording_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 text-xs text-primary hover:underline"
+                >
+                  <Play className="h-3 w-3" /> Play Recording
+                  <ExternalLink className="h-3 w-3" />
+                </a>
+              </div>
+            )}
+          </div>
+        </ScrollArea>
+
+        <DialogFooter className="gap-2 sm:gap-0 pt-3 border-t border-border/40">
+          <DialogClose asChild>
+            <button className="rounded-lg px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
+              Close
+            </button>
+          </DialogClose>
+          <button
+            onClick={handleDownloadPDF}
+            disabled={generating}
+            className="inline-flex items-center gap-2 rounded-lg bg-teal-600 hover:bg-teal-500 px-4 py-2 text-sm font-medium text-white shadow-sm transition disabled:opacity-50"
+          >
+            {generating ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Download className="h-4 w-4" />
+            )}
+            Download PDF
           </button>
         </DialogFooter>
       </DialogContent>
